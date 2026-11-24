@@ -136,3 +136,8 @@ same formulas. For the run in this repository (seed 42, 180 days):
 | LTI Rate per 100 FTE | 1.84 | 1.97 | 0.00 | 9.18 | 1.83 |
 
 If a card differs, check the relationship directions and that exactly one scenario is selected.
+
+These numbers are one run each. Over five seeds ([docs/MULTISEED.md](../docs/MULTISEED.md)) baseline
+profit is $2,913 ± 1,178 a day, and extra pickers earn less than the baseline with 4 seeds out of 5. If
+you add a scenario-comparison page, show the multi-seed range from `data/seeds/multiseed_summary.csv`
+rather than ranking scenarios from a single run.

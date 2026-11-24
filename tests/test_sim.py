@@ -199,6 +199,23 @@ def test_recalled_lot_never_comes_back():
     assert sim._lot(plant, code, float(pack_day)) != lot   # same plant, product and pack day -> new lot
 
 
+def test_recall_that_empties_a_staged_pallet_drops_its_load_job():
+    """Regression (chaos, seed 23, day 21): a recall emptied a staged mixed pallet and deleted it, but its
+    open load job stayed queued; the next loader to claim it crashed on the missing pallet."""
+    sim = Simulation(seed=42)
+    target = None
+    while target is None and sim.t < 3 * DAY:
+        sim.step(C.HEADLESS_TICK_SECONDS)
+        target = next((p for jid in sim.open_jobs["load"] if (p := sim.pallets.get(sim.jobs[jid].pallet))
+                       and p.mixed and len({c[1] for c in p.contents}) == 1), None)
+    assert target is not None
+    sim.start_recall(target.contents[0][1])
+    sim.recall_pull_all()
+    assert target.id not in sim.pallets
+    assert all(sim.jobs[j].pallet in sim.pallets for j in sim.open_jobs["load"])
+    run(sim, 1)                                        # loaders keep claiming jobs without a KeyError
+
+
 # ---------------------------------------------------------------- save / load
 def test_save_load_round_trip(tmp_path):
     sim = run(Simulation(seed=11), 1.3)

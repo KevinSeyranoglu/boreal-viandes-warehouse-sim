@@ -1455,6 +1455,10 @@ class Simulation:
                     tr = self.trucks.get(p.ref)
                     if tr and pid in tr.pallets:
                         tr.pallets.remove(pid)
+                for jid in list(self.open_jobs["load"]):      # nothing left to load (a claimed job aborts itself)
+                    if self.jobs[jid].pallet == pid:
+                        self.open_jobs["load"].remove(jid)
+                        del self.jobs[jid]
                 o = self.orders.get(p.order_id)
                 del self.pallets[pid]
                 if o:
