@@ -633,9 +633,20 @@ class Simulation:
         for w in self.workers.values():
             if w.state == "active" and w.shift != name:
                 w.state = "leaving"
+        # a daily picker plan (closed-loop test of the labour model) schedules only n pickers on this shift
+        planned = C.PICKER_PLAN.get(self.date(self.t).date().isoformat(), {}).get(name)
+        scheduled = None
+        if planned is not None:
+            roster = sorted(w.id for w in self.workers.values() if w.shift == name and w.role == "picker"
+                            and not w.fired)
+            while len(roster) < planned:                  # call in extra pickers for the day
+                roster.append(self._hire("picker", name, announce=False).id)
+            scheduled = set(roster[:planned])
         for w in list(self.workers.values()):
             if w.shift != name or w.state != "off" or w.fired or w.injured_until > self.t:
                 continue
+            if scheduled is not None and w.role == "picker" and w.id not in scheduled:
+                continue                                  # not on today's plan: stays home, no wages
             if self.events.sick_call(self, w):
                 w.sick = True
                 self.stats["sick_calls"] += 1

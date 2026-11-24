@@ -45,7 +45,9 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 | **Metric** | Wages plus expected late fines per day (fines from the fitted curve, at the average fine) |
 | **$ assumption** | Picker wage × average shift premium. The fine per late order is the average OTIF penalty in training. |
 | **Finding** | Service is flat up to about 85 cases per picker-hour, then collapses. The fixed crew runs at about 73, so it is overstaffed on quiet days (Sunday demand is half of Friday's) and close to the cliff on peak days. |
-| **Limits** | Offline estimate. The next step is a closed-loop test: run the simulation with the planned crews and measure. Hiring flexibility (part-time, agency) is assumed. |
+| **Closed-loop test** | `python ml/closed_loop.py` ([docs/CLOSED_LOOP.md](../docs/CLOSED_LOOP.md)) runs the warehouse again with the plan on the 60 test days, 5 seeds. **The offline value does not hold.** The plan cuts 50 picker-hours a day and saves $1,314 in wages, but on-time drops 3.9 points (95 % interval −5.8 to −2.0) and fines and expedites rise $2,100: wages plus fines cost $786 a day more instead of the $815 saving promised. A larger safety buffer only reaches break-even (20 %: −$108 a day, on-time −0.7 points). |
+| **Why** | The curve is fitted on daily averages, so it sees a day at 86 cases per picker-hour as safe; within the day the load peaks before each departure and orders miss their trailer. Each hour cut saves about $26 of wages and risks a fine of 3 % of an order's value, so the fixed crew is close to optimal here. |
+| **Limits** | A better capacity model would work at the shift or wave level (load per departure window), which the late-order model already does. Hiring flexibility (part-time, agency) is assumed. |
 
 ## 3. Spoilage risk (`spoilage.py`)
 
@@ -87,9 +89,11 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 
 ## What I would do in a real warehouse
 
-1. **Labour planning first.** It is the biggest, surest gain and needs only order history and timesheets.
-2. **The late-order flag** as a screen for the shift supervisor, refreshed at every wave release.
+1. **The late-order flag** as a screen for the shift supervisor, refreshed at every wave release. It beats
+   the simple rule with every seed and its drivers (picker load per departure window) are the real mechanism.
+2. **Not the daily labour plan, yet.** Offline it looked like the biggest gain; run in closed loop it lost
+   money with every buffer tried. Plan crews per shift and wave before cutting hours.
 3. **Spoilage:** use a rule, not a model, and take the supplier conversation to procurement with the
    scorecard (`analytics/sql/06_supplier_scorecard.sql`).
 4. **Validate in production** with a pilot on some days or routes against a control, because an
-   offline estimate is not proof.
+   offline estimate is not proof: the closed-loop test turned the labour plan's +$815 a day into a loss.

@@ -245,6 +245,22 @@ def test_headless_writes_csv_without_pygame(tmp_path):
         assert rows, table
 
 
+def test_picker_plan_staffs_only_the_planned_pickers(monkeypatch):
+    """Closed-loop hook: on a planned day only n pickers of the shift come in (extras are called in when
+    the plan needs more than the roster); other days keep the fixed crew."""
+    monkeypatch.setattr(C, "PICKER_PLAN", {"2026-12-02": {"day": 6, "evening": 22, "night": 4}})
+    sim = Simulation(seed=42)
+    on_shift = {}
+    while sim.t < 2.95 * DAY:
+        sim.step(C.HEADLESS_TICK_SECONDS)
+        day, shift = sim.date(sim.t).date().isoformat(), sim.current_shift()
+        n = sum(w.role == "picker" and w.shift == shift and w.state == "active" for w in sim.workers.values())
+        on_shift[(day, shift)] = max(on_shift.get((day, shift), 0), n)
+    assert on_shift[("2026-12-02", "day")] <= 6
+    assert on_shift[("2026-12-02", "evening")] > C.HEADCOUNT["evening"]["picker"]   # 4 called in
+    assert on_shift[("2026-12-01", "day")] > 6
+
+
 def test_one_dock_worker_owns_each_trailer():
     """A trailer belongs to one worker, who unloads (or loads) all of it. Someone else only takes over
     while the owner is on break or finishing their shift, and never works it alongside the owner."""

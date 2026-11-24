@@ -11,6 +11,7 @@ pygame is imported only for the animated game, so headless runs work without it.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -51,6 +52,7 @@ def parse_args(argv=None):
     ap.add_argument("--start", default=None, metavar="YYYY-MM-DD", help="first simulated day (default config.START_DATE)")
     ap.add_argument("--case-scans", action="store_true", help="also log every case scanned at picking (big)")
     ap.add_argument("--out", default=None, help="headless output folder (default data/<scenario>_seed<seed>)")
+    ap.add_argument("--picker-plan", metavar="FILE.json", help="daily picker plan {date: {shift: n}}")
     rec = ap.add_argument_group("video recording")
     rec.add_argument("--record", metavar="FILE.mp4", help="render offscreen to a video instead of opening a window")
     rec.add_argument("--hours", type=float, default=24.0, help="sim hours to record")
@@ -278,6 +280,9 @@ def main(argv=None):
         C.CASE_SCANS = True
     if args.start:
         C.START_DATE = tuple(int(x) for x in args.start.split("-"))
+    if args.picker_plan:
+        with open(args.picker_plan, encoding="utf-8") as fh:
+            C.PICKER_PLAN = json.load(fh)
     if args.headless:
         run_headless(args)
     elif args.record:

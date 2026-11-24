@@ -126,6 +126,7 @@ FORKLIFT_REPAIR_COST = 450.0
 # ------------------------------------------------------------------ staff
 SHIFTS = {"day": (6, 14), "evening": (14, 22), "night": (22, 6)}
 ROLES = ["receiver", "taxi", "forklift", "picker", "loader", "qa"]
+PICKER_PLAN = {}  # closed-loop test: {"YYYY-MM-DD": {shift: pickers}} overrides HEADCOUNT pickers that day
 HEADCOUNT = {     # "forklift" = reach-truck drivers (put-away to height); "taxi" = dock -> drop point
     "day":     {"receiver": 5, "taxi": 2, "forklift": 3, "picker": 18, "loader": 3, "qa": 1},
     "evening": {"receiver": 2, "taxi": 1, "forklift": 2, "picker": 18, "loader": 3, "qa": 1},
