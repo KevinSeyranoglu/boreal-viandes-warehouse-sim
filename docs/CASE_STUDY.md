@@ -18,14 +18,15 @@ floor.
 ## What I built
 
 - **Data:** a star schema of 27 tables per run, an IBM i (AS/400)-style fixed-width extract with SAS
-  programs, SQLite, DuckDB and Parquet.
+  programs, the same data as SAP S/4HANA tables (MATDOC, LIKP/LIPS, batches) with HANA SQL, SQLite, DuckDB
+  and Parquet.
 - **Analytics:** 9 SQL KPI queries (OTIF, cold chain, supplier scorecard, lot recall trace), a Power BI
   export with 17 DAX measures and a check value for each, and a bilingual Streamlit dashboard.
 - **Machine learning:** five models, each scored in dollars against the method a distribution center
   uses today: demand forecast, labour plan, late-order risk, spoilage risk, cold-room early warning.
 - **Method:** time-based splits (no random shuffling), leakage checks, 5 random seeds with paired
   comparisons and 95 % intervals, and closed-loop tests that rerun the warehouse with a model in charge.
-- **Engineering:** Python, 72 automated tests run by GitHub Actions on every push.
+- **Engineering:** Python, 80 automated tests run by GitHub Actions on every push.
 
 ## Five findings
 
@@ -70,5 +71,5 @@ The most useful result came from a model that failed: testing it in the loop, th
 the real problem. Reporting uncertainty (seeds, paired differences, intervals) changed two conclusions
 that a single run would have got wrong. And the simplest method that works should be the one that ships.
 
-*Tools: Python (pandas, scikit-learn, DuckDB), SQL, Power BI and DAX, SAS, Streamlit, pygame, pytest,
+*Tools: Python (pandas, scikit-learn, DuckDB), SQL, Power BI and DAX, SAS, SAP S/4HANA and HANA SQL, Streamlit, pygame, pytest,
 GitHub Actions. The company, plants and stores are fictional; the data is simulated on purpose.*

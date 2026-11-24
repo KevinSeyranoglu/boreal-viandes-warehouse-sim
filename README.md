@@ -34,14 +34,16 @@ flowchart TD
     CSV --> SQLITE[("SQLite")]
     CSV --> DUCK[("DuckDB + Parquet")]
     CSV --> AS400["AS/400 extract"]
+    CSV --> SAP["SAP S/4HANA tables"]
     SQLITE --> BI["Power BI · Streamlit"]
     SQLITE --> ML["5 ML models, in $"]
     DUCK --> MS["Multi-seed report"]
     AS400 --> SAS["SAS programs"]
+    SAP --> HANA["HANA SQL"]
 ```
 
 **Skills shown:** SQL (window functions, `QUALIFY`, views), Python and pandas, DuckDB and Parquet,
-Power BI and DAX, SAS, scikit-learn (time-based splits, leakage checks, permutation importance), experiment
+Power BI and DAX, SAS, SAP S/4HANA tables and HANA SQL, scikit-learn (time-based splits, leakage checks, permutation importance), experiment
 design (paired seeds, confidence intervals), and software practice (a pytest suite run by CI on every push,
 reproducible seeded runs).
 
@@ -240,7 +242,7 @@ streamlit run dashboard/app.py
 
 ![Dashboard: models against today's method, and the closed-loop test of the three picker plans](docs/dashboard_models.png)
 
-## WMS scan log, AS/400 extract and SAS
+## WMS scan log, AS/400 and SAP extracts, SAS and HANA SQL
 
 Every pallet carries a GS1 **SSCC-18 licence plate** and every case a **GTIN-14**. Each scan is
 logged like a real WMS: received at the door (with the probe temperature and the PO), taxi to the drop
@@ -258,6 +260,19 @@ python analytics/export_as400.py      # -> data/as400/: ITMMST, LOCMST, ITHTRN, 
 The files are fixed width, Windows-1252, with 10-character field names and `CYYMMDD` dates, plus a
 layout per file. [sas/](sas/README.md) has the generated import program and analyses: dock-to-stock
 time, picker productivity, lot trace for a recall (`%trace(lot=)`), supplier scorecard, and OTIF by route.
+
+Others run **SAP S/4HANA**. The same run exported as SAP tables, with HANA SQL:
+
+```bash
+python analytics/export_sap.py --check   # -> data/sap/: MARA, MCH1, EKKO/EKPO, MATDOC, LTAP, VBAK/VBAP, LIKP/LIPS, VBFA...
+```
+
+SAP field names, movement types (101 goods receipt, 122 return to vendor, 321 release from quality
+inspection, 553 scrap, 601 goods issue), batches with best-before dates, dates as `YYYYMMDD` text as in
+SAP. [sap_hana/](sap_hana/README.md) has the generated `CREATE COLUMN TABLE` and `IMPORT` scripts and four
+analyses: dock-to-stock, OTIF by route through the document flow (`VBFA`), batch trace for a recall, and
+vendor quality. Their results are tested against the simulation's own numbers (on DuckDB, through a small
+HANA-to-DuckDB translation; not run on a HANA server).
 
 ## Machine learning
 

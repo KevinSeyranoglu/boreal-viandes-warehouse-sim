@@ -20,7 +20,8 @@ sur un vrai plancher.
 ## Ce que j'ai construit
 
 - **Données :** un schéma en étoile de 27 tables par simulation, un extrait à largeur fixe de type
-  IBM i (AS/400) lu par des programmes SAS, SQLite, DuckDB et Parquet.
+  IBM i (AS/400) lu par des programmes SAS, les mêmes données en tables SAP S/4HANA (MATDOC, LIKP/LIPS,
+  lots) avec du SQL HANA, SQLite, DuckDB et Parquet.
 - **Analytique :** 9 requêtes SQL d'indicateurs (OTIF, chaîne du froid, fiche fournisseur, traçabilité
   d'un lot rappelé), un export Power BI avec 17 mesures DAX et la valeur attendue de chacune, et un
   tableau de bord Streamlit bilingue.
@@ -30,7 +31,7 @@ sur un vrai plancher.
 - **Méthode :** découpage dans le temps (jamais aléatoire), vérification des fuites de données,
   5 graines aléatoires avec comparaisons appariées et intervalles à 95 %, et tests en boucle fermée qui
   relancent l'entrepôt avec un modèle aux commandes.
-- **Génie logiciel :** Python, 72 tests automatisés exécutés par GitHub Actions à chaque envoi.
+- **Génie logiciel :** Python, 80 tests automatisés exécutés par GitHub Actions à chaque envoi.
 
 ## Cinq constats
 
@@ -83,6 +84,6 @@ pourquoi, a révélé le vrai problème. Mesurer l'incertitude (graines, différ
 intervalles) a changé deux conclusions qu'une seule simulation aurait faussées. Et la méthode la plus
 simple qui fonctionne devrait être celle qu'on déploie.
 
-*Outils : Python (pandas, scikit-learn, DuckDB), SQL, Power BI et DAX, SAS, Streamlit, pygame, pytest,
+*Outils : Python (pandas, scikit-learn, DuckDB), SQL, Power BI et DAX, SAS, SAP S/4HANA et SQL HANA, Streamlit, pygame, pytest,
 GitHub Actions. L'entreprise, les usines et les magasins sont fictifs; les données sont simulées
 volontairement.*
