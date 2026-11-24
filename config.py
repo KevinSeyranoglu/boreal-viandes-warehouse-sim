@@ -120,6 +120,9 @@ DOCK_DOOR_LEAK = 2e-5              # per fully open dock door (dock seals)
 TEMP_SENSOR_NOISE = 0.15
 ALARM_HYSTERESIS = 0.3
 EXCURSION_QA_MIN = 120             # pallet minutes out of spec before QA review
+# product core temperature follows the room air with this time constant (thermal mass):
+# a freezer door left open 1 h warms the air a lot but frozen cases only ~2 °C
+PRODUCT_TAU_S = {"chilled": 4 * 3600, "frozen": 8 * 3600}
 AMBIENT_BY_MONTH = [-12, -10, -4, 5, 12, 18, 21, 20, 15, 8, 1, -8]
 AMBIENT_DAILY_SWING = 5.0
 ENERGY_PRICE_KWH = 0.075
@@ -177,6 +180,7 @@ PACK_AGE_DAYS = {"fresh": (0, 2), "processed": (1, 5), "freezer": (5, 60)}
 
 # ------------------------------------------------------------------ inventory policy
 COVER_DAYS = {"fresh": 3.5, "processed": 7.0, "freezer": 12.0}
+MIN_INBOUND_PALLETS = 10           # a plant only sends another truck if each one carries at least this
 MIN_REMAINING_DAYS = {"fresh": 3, "processed": 7, "freezer": 30}
 
 # ------------------------------------------------------------------ customers (fictional)

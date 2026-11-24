@@ -417,17 +417,20 @@ class Simulation:
             need[code] = math.ceil(deficit / sku.cases_per_pallet) if deficit > 0 else 0
         for plant, info in C.PLANTS.items():
             codes = [c for c, s in self.skus.items() if s.plant == plant for _ in range(need[c])]
+            if not codes:
+                continue
             self.rng.shuffle(codes)
-            hours = info["hours"]
-            buckets = [[] for _ in hours]
-            for i, c in enumerate(codes):
-                buckets[i % len(hours)].append(c)
-            for h, bucket in zip(hours, buckets):
-                for k in range(0, len(bucket), C.TRUCK_CAPACITY):
-                    sched = day * DAY + h * 3600 + (k // C.TRUCK_CAPACITY) * 1800
-                    if sched < self.t - 1800:
-                        continue
-                    self._create_inbound(plant, sched, bucket[k:k + C.TRUCK_CAPACITY])
+            # consolidate: as few trucks as capacity allows, more only if each stays well loaded
+            slots = [day * DAY + h * 3600 for h in info["hours"] if day * DAY + h * 3600 >= self.t - 1800]
+            if not slots:
+                slots = [self.t + 3600]
+            n = max(math.ceil(len(codes) / C.TRUCK_CAPACITY), len(codes) // C.MIN_INBOUND_PALLETS, 1)
+            n_slots = min(n, len(slots))
+            for i in range(n):
+                load = codes[i::n]
+                k = i % n_slots
+                sched = slots[k * len(slots) // n_slots] + (i // n_slots) * 1800
+                self._create_inbound(plant, sched, load)
 
     def _lot(self, plant, code, pack_day):
         key = f"{plant}|{code}|{int(math.floor(pack_day))}"
@@ -734,11 +737,12 @@ class Simulation:
             else:
                 continue
             spec_key = p.temp_class if p.mixed else self.skus[p.sku].zone
-            temp = self.zones[zone].temp
+            air = self.zones[zone].temp
+            p.temp_c += (air - p.temp_c) * min(1.0, minutes * 60 / C.PRODUCT_TAU_S[p.temp_class])
             if zone == "dock" and p.received_t is not None and self.t - p.received_t < DOCK_DWELL_GRACE_S:
                 out = False
             else:
-                out = temp > PRODUCT_SPEC_MAX[spec_key]
+                out = p.temp_c > PRODUCT_SPEC_MAX[spec_key]   # product temperature, not air
             self.stats["comp_total"] += 1
             self.cum["comp_total"] += 1
             if out:
@@ -1303,16 +1307,21 @@ class Simulation:
                 f.battery = max(0.0, f.battery - C.BATTERY_IDLE_DRAIN_PER_H * dt / 3600)
 
     def _free_forklift(self, w):
+        """Nearest charged forklift; failing that, the nearest low one that sits unplugged
+        (parked for a break or just repaired) so the driver takes it to a charger.
+        Without that fallback, parked trucks drain to 0 % and the fleet strands itself."""
         best, bd = None, 1e9
+        low, ld = None, 1e9
         for f in self.forklifts.values():
             if f.state in ("broken", "busy") or f.operator is not None or f.reserved_by is not None:
                 continue
-            if f.battery < C.BATTERY_MIN_TO_TAKE:
-                continue
             d = abs(f.x - w.x) + abs(f.y - w.y)
-            if d < bd:
-                best, bd = f, d
-        return best
+            if f.battery >= C.BATTERY_MIN_TO_TAKE:
+                if d < bd:
+                    best, bd = f, d
+            elif f.state != "charging" and d < ld:
+                low, ld = f, d
+        return best or low
 
     # ------------------------------------------------------------------ staff
     def _hire(self, role, shift, announce=True):
@@ -1453,7 +1462,9 @@ class Simulation:
             if not cands:
                 continue
             cands.sort(key=lambda jid: (-self.jobs[jid].priority, self.jobs[jid].created_t))
-            for jid in cands[:25]:
+            # scan them all: a window of top jobs can be all blocked (QA full) and starve the
+            # put-aways that would unblock them -> staging fills and inbound deadlocks
+            for jid in cands:
                 job = self.jobs[jid]
                 if self._can_start(job):
                     self.open_jobs[job.kind].remove(jid)
@@ -1972,7 +1983,12 @@ class Simulation:
         pid = self._nid("pallet")
         cases = sum(c[2] for c in w.jack_load)
         kg = round(sum(c[3] for c in w.jack_load), 1)
+        if job.temp_class == "frozen":
+            temp = self.zones["freezer"].temp
+        else:
+            temp = (self.zones["fresh"].temp + self.zones["processed"].temp) / 2
         p = Pallet(id=pid, sku=None, lot=0, cases=cases, status="staged_out", loc="spot", ref=sp.id,
+                   temp_c=round(temp, 1),
                    mixed=True, store=o.store if o else None, order_id=job.order,
                    contents=[list(c) for c in w.jack_load], temp_class=job.temp_class, weight_kg=kg,
                    x=sp.x + 0.5, y=sp.y + 0.5, received_t=self.t)

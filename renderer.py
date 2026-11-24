@@ -84,6 +84,12 @@ class Camera:
         self.x = (mw - VIEW_W / self.zoom) / 2
         self.y = (mh - C.SCREEN_H / self.zoom) / 2
 
+    def focus(self, tx, ty, zoom):
+        """Centre the view on tile (tx, ty) at the given zoom."""
+        self.zoom = max(C.ZOOM_MIN, min(C.ZOOM_MAX, zoom))
+        self.x = tx * T - VIEW_W / self.zoom / 2
+        self.y = ty * T - C.SCREEN_H / self.zoom / 2
+
     def pan(self, dx_screen, dy_screen):
         self.x -= dx_screen / self.zoom
         self.y -= dy_screen / self.zoom
@@ -301,6 +307,8 @@ class Renderer:
         if not r.colliderect(self.view):
             return
         pygame.draw.rect(screen, self._pallet_color(p), r)
+        if p.mixed and self.cam.zoom >= 0.6:   # stretch-wrapped outbound pallet
+            pygame.draw.line(screen, (150, 160, 185), r.topleft, r.bottomright)
         if p.recalled or p.status == "qa_hold":
             pygame.draw.rect(screen, ALARM if p.recalled else (240, 200, 40), r, max(1, int(self.cam.zoom * 1.5)))
         elif self.cam.zoom >= 0.6:
@@ -463,9 +471,9 @@ class Renderer:
     def _draw_fx(self, screen):
         cam = self.cam
         for x, y, age in self.fog:
-            r = max(2, int((1.0 + age * 1.6) * T * cam.zoom))
+            r = max(2, int((0.6 + age * 0.9) * T * cam.zoom))
             puff = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
-            pygame.draw.circle(puff, (235, 245, 255, int(150 * (1 - age / 2.5))), (r, r), r)
+            pygame.draw.circle(puff, (235, 245, 255, int(100 * (1 - age / 2.5))), (r, r), r)
             sx, sy = cam.to_screen(x, y)
             screen.blit(puff, (sx - r, sy - r))
         size = max(14, min(28, int(18 * cam.zoom)))

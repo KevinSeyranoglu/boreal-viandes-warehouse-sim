@@ -3,6 +3,8 @@
     python main.py                                   animated game (French; L = English)
     python main.py --headless --days 180 --seed 42   generate data in data/<scenario>_seed<seed>/
     python main.py --scenario lean_staff             any scenario from config.SCENARIOS
+    python main.py --record videos/day.mp4 --hours 24 --speed 20 --camera site
+                                                     render offscreen to an MP4 (needs ffmpeg)
 
 pygame is imported only for the animated game, so headless runs work without it.
 """
@@ -10,8 +12,19 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 import time
+
+# --record camera presets: tile the view centres on, zoom (None = whole site)
+CAMERAS = {
+    "site": None,
+    "receiving": (38, 34, 1.25),        # all 4 receiving doors + staging + first cold room
+    "shipping": (138, 37, 1.1),         # all 6 shipping doors + outbound lanes
+    "freezer": (111, 46, 1.3),
+    "picking": (90, 46, 0.9),
+}
 
 import config as C
 import i18n
@@ -25,6 +38,13 @@ def parse_args(argv=None):
     ap.add_argument("--scenario", default="baseline", help=f"one of: {', '.join(C.SCENARIOS)}")
     ap.add_argument("--lang", default="fr", choices=i18n.LANGS)
     ap.add_argument("--out", default=None, help="headless output folder (default data/<scenario>_seed<seed>)")
+    rec = ap.add_argument_group("video recording")
+    rec.add_argument("--record", metavar="FILE.mp4", help="render offscreen to a video instead of opening a window")
+    rec.add_argument("--hours", type=float, default=24.0, help="sim hours to record")
+    rec.add_argument("--speed", type=int, default=20, help="sim speed while recording (like keys 1-5)")
+    rec.add_argument("--camera", default="site", choices=list(CAMERAS))
+    rec.add_argument("--warmup", type=float, default=0.0, help="sim hours to skip before recording starts")
+    rec.add_argument("--fps", type=int, default=30)
     return ap.parse_args(argv)
 
 
@@ -182,12 +202,63 @@ def run_game(args):
     pygame.quit()
 
 
+def run_record(args):
+    """Drive the real Game offscreen at a fixed frame step and pipe RGB frames into ffmpeg."""
+    if shutil.which("ffmpeg") is None:
+        raise SystemExit("--record needs ffmpeg on the PATH (sudo apt install ffmpeg)")
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    import pygame
+
+    from simulation import Simulation
+
+    pygame.init()
+    screen = pygame.display.set_mode((C.SCREEN_W, C.SCREEN_H))
+    sim = Simulation(seed=args.seed)
+    for _ in range(int(args.warmup * 3600 / C.TICK_SECONDS)):
+        sim.step(C.TICK_SECONDS)
+    sim.fx.clear()
+    game = Game(sim, screen)
+    game.speed_i = min(range(len(C.SPEEDS)), key=lambda i: abs(C.SPEEDS[i] - args.speed))
+    preset = CAMERAS[args.camera]
+    if preset:
+        game.renderer.cam.focus(*preset)
+
+    out = args.record
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+           "-s", f"{C.SCREEN_W}x{C.SCREEN_H}", "-r", str(args.fps), "-i", "-",
+           "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-pix_fmt", "yuv420p",
+           "-movflags", "+faststart", out]
+    enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    dt = 1.0 / args.fps
+    sim_per_frame = dt * game.speed * 3600.0 / C.REAL_SECONDS_PER_SIM_HOUR
+    frames = max(1, round(args.hours * 3600 / sim_per_frame))
+    t0 = time.time()
+    try:
+        for i in range(frames):
+            game.update(dt)
+            game.draw(dt)
+            enc.stdin.write(pygame.image.tobytes(screen, "RGB"))
+            if i % args.fps == 0:
+                print(f"\r{game.sim.date():%Y-%m-%d %H:%M}  frame {i}/{frames}", end="", flush=True)
+    finally:
+        enc.stdin.close()
+        enc.wait()
+        pygame.quit()
+    if enc.returncode:
+        raise SystemExit(f"ffmpeg failed (exit {enc.returncode})")
+    print(f"\n{frames / args.fps:.0f} s video ({args.hours:g} sim h at {game.speed}x) "
+          f"in {time.time() - t0:.0f} s -> {out}")
+
+
 def main(argv=None):
     args = parse_args(argv)
     i18n.set_lang(args.lang)
     C.apply_scenario(args.scenario)
     if args.headless:
         run_headless(args)
+    elif args.record:
+        run_record(args)
     else:
         run_game(args)
 

@@ -4,3 +4,4 @@ __pycache__/
 data/
 savegame.json
 .pytest_cache/
+videos/
