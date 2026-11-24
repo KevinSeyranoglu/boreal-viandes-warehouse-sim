@@ -30,6 +30,22 @@ def test_ci_matches_t_interval():
     assert h == pytest.approx(2.776 * 1.5811 / 5 ** 0.5, abs=1e-3)
 
 
+def test_ci_uses_t_beyond_ten_seeds():
+    """Regression: past a 10-seed lookup table the interval fell back to 1.96 and came out too narrow."""
+    _, sd, h = ms.ci(range(12))
+    assert h == pytest.approx(2.201 * sd / 12 ** 0.5, abs=1e-3)
+    assert ms.ci([5])[0] == 5 and pd.isna(ms.ci([5])[2])
+
+
+def test_report_without_baseline_and_with_another_season(tmp_path):
+    runs = fake_runs().replace({"scenario": {"baseline": "summer_bbq"}})
+    summ, diff = ms.summarise(runs)
+    path = tmp_path / "MULTISEED.md"
+    ms.write_report(runs, summ, diff, pd.DataFrame(), path=str(path))    # no baseline: no paired rows, no crash
+    text = path.read_text(encoding="utf-8")
+    assert diff.empty and "Not like for like: `summer_bbq`" in text
+
+
 def test_pairing_removes_shared_noise():
     summ, diff = ms.summarise(fake_runs())
     base = summ[(summ.scenario == "baseline") & (summ.kpi == "profit_per_day")].iloc[0]

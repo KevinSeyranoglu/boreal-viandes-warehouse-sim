@@ -21,6 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
+from scipy import stats
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -34,7 +35,6 @@ DATA = os.path.join(ROOT, C.DATA_DIR)
 SEED_DIR = os.path.join(DATA, "seeds")
 DUCKDB = os.path.join(SEED_DIR, "multiseed.duckdb")
 REPORT = os.path.join(ROOT, "docs", "MULTISEED.md")
-T95 = {2: 12.706, 3: 4.303, 4: 3.182, 5: 2.776, 6: 2.571, 7: 2.447, 8: 2.365, 9: 2.306, 10: 2.262}  # t(0.975, n-1)
 
 # per run (scenario, seed): same definitions as sql/08_scenario_comparison.sql
 KPI_SQL = """
@@ -46,8 +46,6 @@ SELECT k.scenario, k.seed,
        AVG(k.spoilage)                        AS spoilage_per_day,
        AVG(k.revenue)                         AS revenue_per_day,
        AVG(k.profit)                          AS profit_per_day,
-       AVG(k.profit) - AVG(k.revenue) + AVG(k.wages) + AVG(k.penalties + k.expedite_cost)
-                                              AS other_net_per_day,
        100 * AVG(k.compliance)                AS compliance_pct
 FROM fact_daily_kpi k
 GROUP BY ALL
@@ -155,8 +153,10 @@ def ci(values):
     """mean, sd and half-width of the 95 % t interval."""
     v = pd.Series(values, dtype=float).dropna()
     n = len(v)
-    sd = float(v.std(ddof=1)) if n > 1 else float("nan")
-    return float(v.mean()), sd, T95.get(n, 1.96) * sd / n ** 0.5 if n > 1 else float("nan")
+    if n < 2:
+        return float(v.mean()) if n else float("nan"), float("nan"), float("nan")
+    sd = float(v.std(ddof=1))
+    return float(v.mean()), sd, float(stats.t.ppf(0.975, n - 1)) * sd / n ** 0.5
 
 
 def summarise(kpi):
@@ -169,7 +169,7 @@ def summarise(kpi):
             m, sd, _ = ci(g[col])
             rows.append({"scenario": s, "kpi": col, "mean": m, "sd": sd, "min": g[col].min(), "max": g[col].max(),
                          "seeds": len(g)})
-            if s != "baseline":
+            if s != "baseline" and not base.empty:
                 d = (g[col] - base[col]).dropna()
                 m, sd, h = ci(d)
                 better = (d > 0) if KPIS[col][2] else (d < 0)
@@ -223,13 +223,19 @@ def write_report(kpi, summ, diff, ml, path=REPORT):
           f"mean difference over {len(seeds)} seeds; when it excludes 0 the effect is larger than the run-to-run noise. "
           "\"Better in\" counts the seeds where the scenario beats the baseline on that KPI.", "",
           "| Scenario | KPI | Mean difference | 95 % interval | Better in |", "|---|---|---|---|---|"]
-    for s in order[1:]:
+    for s in (x for x in order if x != "baseline" and x in set(diff.get("scenario", []))):
         for col, (label, spec, _) in KPIS.items():
             r = diff[(diff.scenario == s) & (diff.kpi == col)].iloc[0]
-            sure = "" if r.ci_low <= 0 <= r.ci_high else " **"
-            L.append(f"| `{s}` | {label} | {sure.strip()}{signed(spec, r['diff'])}{sure.strip()} | "
+            b = "" if r.ci_low <= 0 <= r.ci_high else "**"
+            L.append(f"| `{s}` | {label} | {b}{signed(spec, r['diff'])}{b} | "
                      f"{signed(spec, r.ci_low)} to {signed(spec, r.ci_high)} | {r.seeds_better} of {r.seeds} |")
-    L += ["", "Bold: the interval excludes 0.", ""]
+    L += ["", "Bold: the interval excludes 0."]
+    other_season = [s for s in order if "START_DATE" in C.SCENARIOS.get(s, {})]
+    if other_season:
+        L += ["", "Not like for like: " + ", ".join(f"`{s}`" for s in other_season) + " starts on another date, "
+              "so it does not share the baseline's season or weather even with the same seed. Its difference "
+              "mixes the season effect with run-to-run noise; read it as a comparison of seasons, not a paired test."]
+    L += [""]
     L += ["## Per run", "", "| Scenario | Seed | On-time | OTIF | Profit / day |", "|---|---|---|---|---|"]
     for _, r in kpi.set_index("scenario").loc[order].reset_index().iterrows():
         L.append(f"| `{r.scenario}` | {r.seed} | {r.on_time_pct:.1f} % | {r.otif_pct:.1f} % | ${r.profit_per_day:,.0f} |")

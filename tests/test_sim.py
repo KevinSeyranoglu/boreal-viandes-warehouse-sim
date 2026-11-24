@@ -208,7 +208,7 @@ def test_recall_that_empties_a_staged_pallet_drops_its_load_job():
         sim.step(C.HEADLESS_TICK_SECONDS)
         target = next((p for jid in sim.open_jobs["load"] if (p := sim.pallets.get(sim.jobs[jid].pallet))
                        and p.mixed and len({c[1] for c in p.contents}) == 1), None)
-    assert target is not None
+    assert target is not None, "no single-lot staged pallet in 3 days: the sim changed, pick another seed"
     sim.start_recall(target.contents[0][1])
     sim.recall_pull_all()
     assert target.id not in sim.pallets

@@ -23,31 +23,33 @@ Each scenario minus the baseline run with the same seed. The interval is the 95 
 | `lean_staff` | Fill rate | −0.03 pts | −0.17 pts to +0.12 pts | 2 of 5 |
 | `lean_staff` | Wages / day | **−$1,163** | −$1,219 to −$1,106 | 5 of 5 |
 | `lean_staff` | Late fines and expedites / day | **+$3,283** | +$2,823 to +$3,744 | 0 of 5 |
-| `lean_staff` | Spoilage / day | +$352 | −$1,174 to +$1,878 | 3 of 5 |
+| `lean_staff` | Spoilage / day | +$352 | −$1,175 to +$1,878 | 3 of 5 |
 | `lean_staff` | Profit / day | **−$2,624** | −$4,174 to −$1,073 | 0 of 5 |
 | `extra_pickers` | On-time | **+1.0 pts** | +0.2 pts to +1.7 pts | 5 of 5 |
 | `extra_pickers` | OTIF | +0.7 pts | −0.9 pts to +2.3 pts | 3 of 5 |
 | `extra_pickers` | Fill rate | +0.01 pts | −0.16 pts to +0.19 pts | 2 of 5 |
 | `extra_pickers` | Wages / day | **+$2,015** | +$1,959 to +$2,070 | 0 of 5 |
 | `extra_pickers` | Late fines and expedites / day | **−$754** | −$1,424 to −$85 | 5 of 5 |
-| `extra_pickers` | Spoilage / day | −$531 | −$1,869 to +$807 | 3 of 5 |
+| `extra_pickers` | Spoilage / day | −$531 | −$1,870 to +$807 | 3 of 5 |
 | `extra_pickers` | Profit / day | −$940 | −$2,512 to +$633 | 1 of 5 |
 | `summer_bbq` | On-time | **−2.0 pts** | −3.4 pts to −0.5 pts | 0 of 5 |
 | `summer_bbq` | OTIF | **−2.3 pts** | −3.9 pts to −0.7 pts | 0 of 5 |
 | `summer_bbq` | Fill rate | −0.01 pts | −0.12 pts to +0.10 pts | 2 of 5 |
 | `summer_bbq` | Wages / day | +$30 | −$12 to +$73 | 1 of 5 |
-| `summer_bbq` | Late fines and expedites / day | **+$1,625** | +$530 to +$2,721 | 0 of 5 |
+| `summer_bbq` | Late fines and expedites / day | **+$1,625** | +$529 to +$2,721 | 0 of 5 |
 | `summer_bbq` | Spoilage / day | +$17 | −$558 to +$592 | 3 of 5 |
-| `summer_bbq` | Profit / day | +$3,041 | −$2,260 to +$8,342 | 4 of 5 |
+| `summer_bbq` | Profit / day | +$3,041 | −$2,261 to +$8,342 | 4 of 5 |
 | `chaos` | On-time | −0.7 pts | −1.8 pts to +0.3 pts | 1 of 5 |
 | `chaos` | OTIF | **−6.0 pts** | −7.2 pts to −4.8 pts | 0 of 5 |
 | `chaos` | Fill rate | **−0.54 pts** | −0.64 pts to −0.44 pts | 0 of 5 |
 | `chaos` | Wages / day | −$1 | −$21 to +$20 | 2 of 5 |
-| `chaos` | Late fines and expedites / day | **+$2,476** | +$1,340 to +$3,612 | 0 of 5 |
+| `chaos` | Late fines and expedites / day | **+$2,476** | +$1,340 to +$3,613 | 0 of 5 |
 | `chaos` | Spoilage / day | +$68 | −$1,107 to +$1,243 | 2 of 5 |
-| `chaos` | Profit / day | **−$7,252** | −$10,925 to −$3,580 | 0 of 5 |
+| `chaos` | Profit / day | **−$7,252** | −$10,926 to −$3,579 | 0 of 5 |
 
 Bold: the interval excludes 0.
+
+Not like for like: `summer_bbq` starts on another date, so it does not share the baseline's season or weather even with the same seed. Its difference mixes the season effect with run-to-run noise; read it as a comparison of seasons, not a paired test.
 
 ## Per run
 
