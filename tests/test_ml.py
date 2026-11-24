@@ -54,6 +54,29 @@ def test_labour_plan_cheaper_than_fixed_crew(results):
     assert lb["plan"]["total_cost_per_day"] < lb["fixed"]["total_cost_per_day"]
 
 
+def test_night_picks_after_midnight_belong_to_the_shift_that_started_the_day_before():
+    import pandas as pd
+    import labour_shift
+    ts = pd.Series(["2027-02-02 01:30:00", "2027-02-02 23:00:00", "2027-02-02 09:00:00"])
+    shift = pd.Series(["night", "night", "day"])
+    assert list(labour_shift._shift_date(ts, shift)) == ["2027-02-01", "2027-02-02", "2027-02-02"]
+
+
+def test_shift_plan_staffs_the_busy_shifts_and_trims_the_evening(results):
+    """The evening shift picks little (waves for 03:00–18:00 departures fall on night and day), so the
+    per-shift plan keeps its minimum crew there and puts the pickers on the shifts that pick."""
+    import common as cm
+    import labour_shift
+    con = cm.connect(str(results[1].parent / "warehouse.db"))
+    r = labour_shift.run(con)
+    con.close()
+    assert r["plan_load"]["evening"] is None and r["shift_share"]["evening"] < labour_shift.MIN_SHARE
+    assert all(day["evening"] == labour_shift.MIN_CREW for day in r["plan"].values())
+    assert r["planned_pickers"]["day"] > labour_shift.MIN_CREW and r["planned_pickers"]["night"] > labour_shift.MIN_CREW
+    assert sum(r["planned_pickers"].values()) < sum(r["fixed_crew"].values())
+    assert set(r["plan"]) == set(r["static_plan"])
+
+
 def test_late_order_model_beats_largest_order_rule(results):
     lo = results[0]["late_orders"]
     if "skipped" in lo:

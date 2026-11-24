@@ -49,6 +49,17 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 | **Why** | The curve is fitted on daily averages, so it sees a day at 86 cases per picker-hour as safe; within the day the load peaks before each departure and orders miss their trailer. Each hour cut saves about $26 of wages and risks a fine of 3 % of an order's value, so the fixed crew is close to optimal here. |
 | **Limits** | A better capacity model would work at the shift or wave level (load per departure window), which the late-order model already does. Hiring flexibility (part-time, agency) is assumed. |
 
+## 2b. Labour planning per shift (`labour_shift.py`)
+
+| | |
+|---|---|
+| **Decision** | Pickers to schedule on each shift (day, evening, night) tomorrow |
+| **Why** | The daily plan failed its closed-loop test. Per shift: the night and day shifts do almost all the picking (waves for departures 03:00–18:00 are released 5 h before), while the evening shift had 18 pickers for about 5 % of it. |
+| **Method** | (1) Volume: the demand forecast split by shift with each weekday's training share. (2) Capacity: per shift, a logistic curve of late orders against load, orders assigned to the shift that picked most of their cases, fitted on the training days of the three staffing scenarios; the plan load is where it reaches 2 % late, capped at the 95th percentile observed. (3) Crew: forecast cases / plan load / hours a rostered picker works, plus 5 %; a shift with under 15 % of the volume keeps 3 pickers for rush orders. |
+| **Baseline** | The fixed crew, and a static crew rebalanced by shift from the training average (same curves, no forecast) |
+| **Closed-loop result** | 5 seeds, 60 test days: 227 picker-hours a day instead of 351, **wages + fines −$3,498 a day** (−$4,853 to −$2,143), on-time +0.3 points (−0.2 to +0.9). The static crew saves $2,444 but loses 1.4 on-time points; the forecast keeps 1.7 points more on time with the same hours. |
+| **Limits** | Assumes pickers can be scheduled by shift and day (part-time, agency). The evening minimum crew (3) is a judgement for rush orders, not fitted. Profit itself is too noisy between runs to separate from 0. |
+
 ## 3. Spoilage risk (`spoilage.py`)
 
 | | |
@@ -91,9 +102,10 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 
 1. **The late-order flag** as a screen for the shift supervisor, refreshed at every wave release. It beats
    the simple rule with every seed and its drivers (picker load per departure window) are the real mechanism.
-2. **Not the daily labour plan, yet.** Offline it looked like the biggest gain; run in closed loop it lost
-   money with every buffer tried. Plan crews per shift and wave before cutting hours.
+2. **The per-shift labour plan**, after a pilot. Rebalancing the evening shift alone is worth most of
+   it; the forecast then keeps service on busy days. Not the daily plan: it lost money in closed loop.
 3. **Spoilage:** use a rule, not a model, and take the supplier conversation to procurement with the
    scorecard (`analytics/sql/06_supplier_scorecard.sql`).
 4. **Validate in production** with a pilot on some days or routes against a control, because an
-   offline estimate is not proof: the closed-loop test turned the labour plan's +$815 a day into a loss.
+   offline estimate is not proof: the closed-loop test turned the daily labour plan's +$815 a day into
+   a loss, and its diagnosis led to the per-shift plan that works.

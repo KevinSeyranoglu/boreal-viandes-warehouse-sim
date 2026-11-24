@@ -19,7 +19,7 @@ scenario is compared with the baseline run of the same seed, with a 95 % interva
 |---|---|
 | Should we cut pickers to save wages? | **No.** Lean staffing saves $1,210 a day in wages but pays $3,096 more in late fines and expedites: **−$3,209 a day** (−$4,705 to −$1,713), worse with all 5 seeds. |
 | Should we add pickers instead? | **Not as a fixed crew.** On-time rises to 99.6 %, but $1,977 a day of wages buys only $526 of fines avoided. Profit is higher with 1 seed of 5 (−$2,815 a day on average). A single run (seed 42) said the opposite. |
-| How many pickers do we need tomorrow? | The demand forecast is good (store × SKU error **37.1 % vs 52.4 %** for "same weekday last week"), and offline the crew plan built on it promised **$815 a day**. **Run in closed loop, it lost money:** it saved $1,314 of wages but on-time fell 3.9 points and fines rose $2,100 ([docs/CLOSED_LOOP.md](docs/CLOSED_LOOP.md)). Keep the fixed crew. |
+| How many pickers do we need tomorrow? | **Plan per shift, not per day.** A daily crew plan promised $815 a day offline but **lost money when simulated** (on-time −3.9 points). The diagnosis: the evening shift had 18 pickers for 5 % of the picking. A per-shift plan (demand forecast + one capacity curve per shift) **saves $3,498 a day in wages and fines** (−$4,853 to −$2,143) with on-time unchanged, in closed loop over 5 seeds ([docs/CLOSED_LOOP.md](docs/CLOSED_LOOP.md)). |
 | One worker owns each trailer: what does it take? | Loading alone, the owner needs 22 min after the last pallet is staged instead of 3 min with whoever is free, and on-time fell 3–4 points. **Releasing waves 5 h before departure instead of 4 restored it at no cost**; adding loaders recovered less for about $1,000 a day. |
 | Can one dock wall both receive and ship? | **Yes, with a longer yard wait.** 14 shared doors on one wall (instead of 6 + 14 on two walls, in a 6 % narrower building) keep on-time and dock-to-stock within the noise; trailers wait **8 minutes longer** at the gate (+6.5 to +10.0). |
 | Which pallets will spoil? | **A one-line rule beats the ML model** with every seed ("fewer than 3 days of shelf life at receipt"). Every spoiled pallet traces to an aged poultry load: the fix is a supplier contract clause, not a model. |
@@ -270,7 +270,8 @@ seed 42. Every model was also retrained on each of the five seeds
 | Model | Result vs today's method | Value / day |
 |---|---|---|
 | Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week); 37.1 % ± 0.2 vs 52.4 % ± 0.3 over five seeds | $4,003 (5 seeds: $3,024 ± 1,563) |
-| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 86 cases per picker-hour) plus the forecast: 309 picker-hours a day instead of 353. **Closed-loop test: the saving does not hold** (on-time −3.9 points, wages + fines +$786 a day; see below) | offline $811 (5 seeds: $815 ± 119); **simulated: a loss** |
+| Labour planning, per day | A capacity curve fitted from the data (service collapses above ≈ 86 cases per picker-hour) plus the forecast: 309 picker-hours a day instead of 353. **Closed-loop test: the saving does not hold** (on-time −3.9 points, wages + fines +$786 a day; see below) | offline $811 (5 seeds: $815 ± 119); **simulated: a loss** |
+| Labour planning, per shift | Forecast volume split by shift, one capacity curve per shift, a minimum crew on the evening shift: 227 picker-hours a day instead of 351. **Closed-loop test: on-time +0.3 points, wages + fines −$3,498 a day** | **simulated: $3,498** (5 seeds, −$4,853 to −$2,143) |
 | Late-order risk | PR-AUC 0.45 vs 0.04 for the largest-orders rule (5 seeds: 0.44 ± 0.06 vs 0.05); top drivers are picker load, departure hour and pickers present (the true mechanism). The model beats the rule with every seed; late orders are rare (1.2–2.0 % of test orders). | $276 (5 seeds: $246 ± 93) |
 | Cold-room early warning | Warns 29 min before a breach vs 13 min for a fixed pre-alarm, with fewer alerts (5 seeds: 28 ± 0 vs 13 ± 0 min) | not monetised |
 | Spoilage risk | **A simple rule wins with every seed** ("fewer than 3 days left at receipt" is 88 % precise): net $846 ± 120 a day for the rule vs $428 ± 306 for the model. The fix is upstream: every spoiled pallet comes from an aged load from the poultry plant. | rule recommended |
@@ -285,17 +286,20 @@ An offline estimate scores a model with another model (here, its own capacity cu
 test runs the warehouse again with the plan's picker shifts on the 60 test days, for each of the five
 seeds, and compares the same days with the fixed crew ([docs/CLOSED_LOOP.md](docs/CLOSED_LOOP.md)):
 
-| Safety buffer on the plan | Picker-hours / day (fixed crew: 351) | Wages + fines vs fixed crew | On-time |
+| Plan (5 % buffer) | Picker-hours / day (fixed crew: 351) | Wages + fines vs fixed crew | On-time |
 |---|---|---|---|
-| 5 % (the published model) | 301 | +$786 a day | **−3.9 pts** (−5.8 to −2.0) |
-| 10 % | 315 | +$618 | −2.9 pts |
-| 15 % | 328 | +$459 | −2.2 pts |
-| 20 % | 342 | −$108 (break-even) | −0.7 pts |
+| Per day (`labour.py`) | 301 | +$786 a day (a loss) | **−3.9 pts** (−5.8 to −2.0) |
+| Same crew every day, rebalanced by shift (no ML) | 227 | −$2,444 | **−1.4 pts** (−2.6 to −0.1) |
+| **Per shift (`labour_shift.py`)** | **227** | **−$3,498** (−$4,853 to −$2,143) | +0.3 pts (−0.2 to +0.9) |
 
-**Finding:** the promised $815 a day was an artefact of the capacity curve, which is fitted on daily
-averages and misses the load peaks before each departure. Every buffer tried costs service and none
-saves money, so the fixed crew stays. That is the reason to test a model in the loop before trusting
-its offline value.
+**Finding, in three steps.** (1) The daily plan's promised $815 a day was an artefact of its capacity
+curve, fitted on daily averages; in the loop it lost money with every safety buffer tried (5–20 %).
+(2) Looking per shift explained why: departures run 03:00–18:00 and waves are released 5 h before, so
+the night and day shifts do almost all the picking while the evening shift had 18 pickers for 5 % of
+it. Cutting every shift alike cut the busy ones too. (3) A per-shift plan fixes it. Most of the gain
+is the rebalancing itself, but with the same hours the forecast keeps **1.7 more points of orders on
+time** (+0.2 to +3.2) than a static rebalanced crew, by putting the hours on the days that need them.
+That is the reason to test a model in the loop before trusting its offline value.
 
 ## Record videos
 
@@ -332,7 +336,7 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 - [x] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk (a rule wins), late-order risk, cold-room early warning
 - [x] Multi-seed evaluation: every scenario and model over 5 seeds, with paired differences and 95 % intervals
 - [x] Dock realism: one worker owns each trailer; shared-dock (U-flow) layout option
-- [x] Closed-loop test: the ML labour plan run in the simulation (its offline saving did not hold)
+- [x] Closed-loop test: the daily labour plan failed in the simulation; a per-shift plan saves $3,500 a day
 
 ## Tech
 
