@@ -47,6 +47,7 @@ TEXT = {
     "area_office": ("Bureau", "Office"),
     "area_receiving": ("Réception", "Receiving"),
     "area_shipping": ("Expédition", "Shipping"),
+    "area_yard": ("Cour à remorques", "Trailer yard"),
     "door_n": ("Porte {n}", "Door {n}"),
 
     # ---- event log (simulation.log keys)
@@ -89,10 +90,15 @@ TEXT = {
     "ev_rush": ("Commande urgente : {store} ({cases} caisses)", "Rush order: {store} ({cases} cases)"),
     "ev_season": ("Saison : {season}", "Season: {season}"),
     "ev_sick": ("Absence maladie : {name} ({role})", "Sick call: {name} ({role})"),
+    "ev_injury": ("Accident de travail : {name}, {kind} ({days} j d'arrêt)",
+                  "Workplace injury: {name}, {kind} ({days} days off)"),
+    "ev_forklift": ("Incident chariot {fid} : {kind}", "Forklift {fid} incident: {kind}"),
 
     # ---- floating text
     "fx_alarm": ("Alarme {zone} !", "{zone} alarm!"),
     "fx_breakdown": ("Bris chariot {fid}", "Forklift {fid} down"),
+    "fx_injury": ("Blessure !", "Injury!"),
+    "fx_forklift": ("Collision !", "Collision!"),
     "fx_disposed": ("Lot {lot} jeté", "Lot {lot} disposed"),
     "fx_expedite": ("Envoi express", "Expedited"),
     "fx_qa_hold": ("Retenue AQ", "QA hold"),
@@ -108,12 +114,25 @@ VALUES = {
     "zone": {"dock": ("Quai", "Dock"), "fresh": ("Frais", "Fresh"),
              "processed": ("Charcuterie", "Processed"), "freezer": ("Congélateur", "Freezer"),
              "qa": ("Contrôle qualité", "QA hold")},
-    "role": {"receiver": ("réceptionnaire", "receiver"), "forklift": ("cariste", "forklift driver"),
+    "role": {"receiver": ("réceptionnaire", "receiver"), "taxi": ("taxi", "taxi driver"),
+             "forklift": ("cariste (hauteur)", "reach-truck driver"),
              "picker": ("préparateur", "picker"), "loader": ("chargeur", "loader"), "qa": ("inspecteur AQ", "QA")},
     "shift": {"day": ("jour", "day"), "evening": ("soir", "evening"), "night": ("nuit", "night")},
     "season": {"xmas": ("Fêtes (jambon de Noël)", "Holidays (Christmas ham)"),
                "bbq": ("BBQ d'été", "Summer BBQ")},
     "plant": {code: (p["fr"], p["en"]) for code, p in C.PLANTS.items()},
+    "kind": {"overexertion": ("effort excessif", "overexertion"),
+             "slip_trip_fall": ("chute / glissade", "slip, trip or fall"),
+             "struck_by_object": ("heurté par un objet", "struck by an object"),
+             "caught_in": ("coincé / écrasé", "caught in or between"),
+             "cold_stress_cut": ("froid / coupure", "cold stress or cut"),
+             "pedestrian_struck": ("piéton heurté par un chariot", "pedestrian struck by a forklift"),
+             "tip_over": ("renversement du chariot", "forklift tip-over"),
+             "crushed_by_load": ("écrasé par la charge", "crushed by the load"),
+             "other": ("autre", "other"),
+             "rack_strike": ("palettier heurté", "rack strike"),
+             "dropped_pallet": ("palette échappée", "dropped pallet"),
+             "equipment_damage": ("chariot endommagé", "equipment damage")},
 }
 
 

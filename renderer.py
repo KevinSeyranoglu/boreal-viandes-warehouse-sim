@@ -35,6 +35,7 @@ ZONE_TINT = {
 }
 ROLE_COLORS = {
     "receiver": (60, 120, 220),
+    "taxi": (20, 180, 190),
     "forklift": (240, 170, 30),
     "picker": (40, 170, 90),
     "loader": (150, 80, 200),
@@ -141,6 +142,7 @@ class Renderer:
     def set_sim(self, sim):
         self.sim = sim
         self.base = self._build_base(sim.layout)
+        self._scaled_key = None
         self.floaters.clear()
         self.fog.clear()
 
@@ -183,8 +185,11 @@ class Renderer:
         for x in range(0, L.w * T, 48):
             pygame.draw.line(surf, (220, 200, 90), (x, mid), (x + 24, mid), 2)
         # parking bays, chargers, break-room seats
-        for py in C.PARKING_Y:
-            pygame.draw.rect(surf, (210, 210, 210), (14 * T, py * T - 2, 18 * T, T + 4), 1)
+        for px, py in C.PARKING:                      # trailer yard
+            pygame.draw.rect(surf, (210, 210, 210), ((px - 8) * T, py * T - 2, 17 * T, T + 4), 1)
+        for sp in L.spots:                            # drop points (P&D) for the reach trucks
+            if sp.kind == "drop":
+                pygame.draw.rect(surf, (230, 190, 40), (sp.x * T + 1, sp.y * T + 1, T - 2, T - 2), 2)
         for cx, cy in L.chargers:
             pygame.draw.rect(surf, (60, 160, 90), (cx * T + 2, cy * T + 2, T - 4, T - 4), 2)
         for sx, sy in L.seats:
@@ -232,6 +237,14 @@ class Renderer:
 
     def _blit_base(self, screen):
         cam = self.cam
+        if cam.zoom <= 1.0:                       # scale the whole map once per zoom level, then blit
+            key = round(cam.zoom, 4)
+            if getattr(self, "_scaled_key", None) != key:
+                bw, bh = self.base.get_size()
+                self._scaled = pygame.transform.smoothscale(self.base, (max(1, round(bw * key)), max(1, round(bh * key))))
+                self._scaled_key = key
+            screen.blit(self._scaled, (round(-cam.x * cam.zoom), round(-cam.y * cam.zoom)))
+            return
         bw, bh = self.base.get_size()
         vw, vh = VIEW_W / cam.zoom, C.SCREEN_H / cam.zoom
         x0, y0 = max(0, int(cam.x)), max(0, int(cam.y))
@@ -273,15 +286,17 @@ class Renderer:
                 self._label(screen, i18n.value("zone", key), cx, cy - line / 2, size, TEXT_DARK, bold=True)
                 self._label(screen, f"{z.temp:+.1f} °C", cx, cy + line / 2, size, col, bold=True)
             else:                               # cold rooms: corridor above the door
-                self._label(screen, f"{i18n.value('zone', key)}  {z.temp:+.1f} °C", cx, y0 - 1.5, size,
+                self._label(screen, f"{i18n.value('zone', key)}  {z.temp:+.1f} °C", cx, y0 - 3.3, size,
                             col, bold=True)
         dock = sim.zones["dock"]
-        for key, cx in (("area_receiving", 49), ("area_shipping", 130)):
+        for key, cx in (("area_receiving", C.BUILDING[0] + 9), ("area_shipping", C.BUILDING[2] - 9)):
             self._label(screen, f"{i18n.t(key)}  {dock.temp:+.1f} °C", cx, 6.5, max(11, size - 4), TEXT_DARK, bold=True)
         for key, area in (("area_charging", "charging"), ("area_break", "break"), ("area_office", "office")):
             x0, y0, x1, _ = L.areas[area]
             self._label(screen, i18n.t(key), (x0 + x1 + 1) / 2, y0 + 1.6, max(11, size - 6), TEXT_DARK)
         self._label(screen, f"{i18n.t('outside')} {sim.ambient():+.0f} °C", 20, 3, max(11, size - 4), TEXT_LIGHT)
+        self._label(screen, i18n.t("area_yard"), C.PARKING[0][0] + 60, C.PARKING[0][1] - 2.2,
+                    max(11, size - 4), TEXT_LIGHT, bold=True)
         if cam.zoom >= 0.7:
             n_in = len(C.RECEIVING_DOOR_Y)
             for d in L.doors:
@@ -316,14 +331,21 @@ class Renderer:
 
     def _draw_rack_pallets(self, screen):
         sim = self.sim
+        n = C.RACK_LEVELS
+        h = 2.0 / n                                         # a bay is 2 tiles deep
         for slot in sim.slots:
             if slot.pallet is not None:
                 p = sim.pallets.get(slot.pallet)
                 if p is not None:
-                    self._pallet_rect(screen, p, slot.x, slot.y + slot.level)
-            elif slot.reserved_for is not None and self.cam.zoom >= 0.6:
-                pygame.draw.rect(screen, (255, 255, 255),
-                                 self.cam.rect(slot.x + 0.15, slot.y + slot.level + 0.15, 0.7, 0.7), 1)
+                    r = self.cam.rect(slot.x + 0.1, slot.y + (n - 1 - slot.level) * h + 0.05, 0.8, h - 0.1)
+                    if r.colliderect(self.view):
+                        pygame.draw.rect(screen, self._pallet_color(p), r)
+                        if p.recalled or p.status == "qa_hold":
+                            pygame.draw.rect(screen, ALARM if p.recalled else (240, 200, 40), r, 1)
+            elif slot.reserved_for == -1:                 # bay closed after a rack strike
+                r = self.cam.rect(slot.x, slot.y + (n - 1 - slot.level) * h, 1, h)
+                if r.colliderect(self.view):
+                    pygame.draw.rect(screen, ALARM, r, 1)
 
     def _draw_spot_pallets(self, screen):
         sim = self.sim
@@ -387,7 +409,13 @@ class Renderer:
             sx, sy = cam.to_screen(x, y)
             if not self.view.inflate(40, 40).collidepoint(sx, sy):
                 continue
-            if w.jack_load or w.carrying is not None or (w.role == "picker" and w.task == "job"):
+            if w.role == "taxi":
+                pygame.draw.polygon(screen, (90, 90, 90), self._poly(x, y, w.heading, 2.2, 0.8, offset=1.2))
+                for i, pid in enumerate(w.cargo[:C.TAXI_PALLETS]):
+                    if pid in sim.pallets:
+                        pygame.draw.polygon(screen, self._pallet_color(sim.pallets[pid]),
+                                            self._poly(x, y, w.heading, 0.9, 0.8, offset=0.7 + i))
+            elif w.jack_load or w.carrying is not None or (w.role == "picker" and w.task == "job"):
                 if w.carrying in sim.pallets:
                     col = self._pallet_color(sim.pallets[w.carrying])
                 else:

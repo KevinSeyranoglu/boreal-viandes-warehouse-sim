@@ -19,12 +19,15 @@ generating process is known, so every model can be checked against a controlled 
 
 | Area | Details |
 |---|---|
-| **Inbound** | Reefer trucks from 4 plants with realistic lateness. A probe temperature check on arrival decides accept, QA hold or reject. Reefer failures happen. |
-| **Storage** | Fresh (-1 to 2 °C), processed (0 to 4 °C) and freezer (-20 °C) rooms with rack slots. Each pallet has a lot, a pack date and a best-before date. Product temperature lags room air (thermal mass), and excursions go to QA. |
+| **Scale** | About 25,000 cases a day to 48 stores on 16 routes. 6 receiving and 14 shipping doors, 3 cold rooms with 4,600 rack positions on 5 levels, 78 staff over three shifts. |
+| **Inbound** | 53' reefer trailers carrying 26–30 pallets from 4 plants, which arrive in an overnight and early-morning rush. Trailers wait in the yard until a door and a dock worker are free, then go through a 15-minute check-in. A probe temperature check decides accept, QA hold or reject. Reefer failures happen. |
+| **Put-away** | A taxi driver moves pallets from the dock to the drop points at the aisle ends, 2 at a time. A reach-truck driver then lifts each pallet into the high racks. |
+| **Storage** | Fresh (-1 to 2 °C), processed (0 to 4 °C) and freezer (-20 °C) rooms. Each pallet has a lot, a pack date and a best-before date. Product temperature lags room air (thermal mass), and excursions go to QA. |
 | **Orders** | 12 stores (grocery, club, restaurant) on 6 delivery routes with cutoffs. Demand follows weekday, seasonal (Christmas ham, summer BBQ, BBQ heat sensitivity) and random variation. |
-| **Picking & shipping** | FEFO picking onto mixed pallets with catch weights. Pallets are wrapped, staged, and loaded last stop first, and trucks leave in their departure window. |
-| **People & equipment** | Day, evening and night shifts. Receivers, forklift drivers, pickers, loaders and QA, each with an individual skill. Forklifts have batteries, chargers and breakdowns. |
+| **Picking & shipping** | FEFO picking onto mixed pallets with catch weights. Pallets are wrapped, staged, and loaded last stop first (at most 30 pallets per trailer). Empty outbound trailers are dropped in the yard hours ahead and pulled to their door for loading. |
+| **People & equipment** | Day, evening and night shifts. Receivers, taxi drivers, reach-truck drivers, pickers, loaders and QA, each with an individual skill. A fleet of 18 forklifts with batteries, chargers and breakdowns. |
 | **Events** | Late trucks, reefer failure, freezer door stuck open, forklift breakdown, sick calls, rush orders, lot recalls with traceability. |
+| **Safety incidents** | Workplace injuries at the Canadian lost-time rate for warehousing (1.30 per 100 workers per year), and forklift accidents split as in Québec serious-accident data (struck pedestrian, tip-over, crushed by the load). Property damage follows Bird's safety triangle: rack strikes close a bay, and dropped pallets destroy product. An injured worker is off for days and their shift runs short. Every value and its source is in `config.py` and the data dictionary. |
 | **Economy** | Revenue per case, wages, energy (the freezer costs the most), spoilage, penalties, and the cold-chain compliance KPI. |
 
 The interface is French (Québec) by default; press **L** for English.
@@ -80,22 +83,22 @@ python analytics/run_sql.py 06 --scenario chaos    # one query, another scenario
 `analytics/sql/` holds the nine queries a distribution-center manager asks for: daily OTIF,
 service by customer, cold-chain compliance, expiry risk, picker productivity, supplier scorecard,
 recall trace, scenario comparison and spoilage drivers. For example, the supplier scorecard and the
-spoilage-drivers query show that **every spoiled pallet came from an aged poultry load**, which
-arrived with about 3 days of shelf life left.
+spoilage-drivers query show that **every spoiled pallet came from an aged load (98 % of them poultry)**,
+which arrived with less than 3 days of shelf life left.
 
 Scenarios for what-if comparisons (180 simulated days, seed 42, from `analytics/sql/08_scenario_comparison.sql`):
 
 | Scenario | On-time | Fill rate | Wages / day | Late and expedite cost / day | Profit / day |
 |---|---|---|---|---|---|
-| `baseline` | 98.0 % | 99.44 % | $5,128 | $511 | **$2,500** |
-| `lean_staff` (fewer pickers and drivers) | 96.5 % | 99.37 % | $4,098 | $613 | $2,031 |
-| `extra_pickers` | 99.7 % | 99.29 % | $6,134 | $520 | $1,434 |
-| `chaos` (5x more incidents) | 98.2 % | 98.43 % | $5,141 | $1,242 | -$336 |
-| `summer_bbq` (June start, BBQ peak) | 97.9 % | 99.45 % | $5,120 | $519 | $4,179 |
+| `baseline` | 99.0 % | 99.81 % | $16,379 | $916 | **$4,277** |
+| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 92.1 % | 99.69 % | $15,241 | $2,424 | $1,542 |
+| `extra_pickers` (+4 pickers per shift) | 100 % | 99.79 % | $18,407 | $864 | $2,085 |
+| `chaos` (3x more incidents and accidents) | 99.0 % | 99.40 % | $16,363 | $2,312 | -$5,035 |
+| `summer_bbq` (June start, BBQ peak) | 97.5 % | 99.72 % | $16,336 | $1,466 | $6,121 |
 
-Cutting staff saves $1,000 a day in wages but loses more in late deliveries and bad days. Extra
-pickers buy near-perfect punctuality at a cost the service gain doesn't repay. This is the
-trade-off the labour-planning model will optimise.
+Cutting staff saves $1,100 a day in wages but costs $1,500 more in late deliveries and expedites,
+plus extra spoilage. Extra pickers buy perfect punctuality for $2,000 more a day, which the service
+gain doesn't repay. This is the trade-off the labour-planning model will optimise.
 
 ## Tests
 
@@ -111,7 +114,7 @@ python main.py --record videos/day.mp4 --hours 24 --speed 20 --camera site
 ```
 
 This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `receiving`,
-`shipping`, `freezer` and `picking`. Use `--warmup H` to skip ahead to a busy hour, and
+`shipping`, `freezer`, `picking`, `yard` (the receiving doors and the trailer queue) and `taxi`. Use `--warmup H` to skip ahead to a busy hour, and
 `--lang en` for English.
 
 ## Project layout

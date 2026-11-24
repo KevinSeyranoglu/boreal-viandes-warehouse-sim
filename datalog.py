@@ -18,13 +18,16 @@ import config as C
 # tests/test_analytics.py checks the simulation's row() calls against this.
 FACT_COLUMNS = {
     "fact_daily_kpi": ["date", "revenue", "costs", "profit", "wages", "energy", "spoilage", "penalties",
-                       "rejected_cost", "expedite_cost", "repair_cost", "fixed_cost", "cases_shipped",
+                       "rejected_cost", "expedite_cost", "repair_cost", "incident_cost", "fixed_cost", "cases_shipped",
                        "cases_picked", "orders", "on_time", "fill_rate", "accuracy", "cph", "compliance",
                        "temp_alarms", "pallets_received", "pallets_rejected", "pallets_qa", "inbound_trucks",
-                       "inbound_late", "breakdowns", "expedites", "spoiled_cases", "sick_calls", "cash"],
+                       "inbound_late", "breakdowns", "expedites", "spoiled_cases", "sick_calls",
+                       "injuries_lost_time", "injuries_medical", "forklift_incidents", "damaged_cases", "cash"],
     "fact_energy_daily": ["date", "zone", "kwh", "cost", "door_passes"],
     "fact_equipment": ["ts", "forklift_id", "event", "battery_pct"],
     "fact_events": ["ts", "event_type", "detail"],
+    "fact_incidents": ["ts", "incident_id", "category", "incident_type", "severity", "worker_id", "role",
+                       "forklift_id", "zone", "days_lost", "cases_damaged", "cost"],
     "fact_inbound_trucks": ["truck_id", "plant_code", "scheduled_ts", "gate_ts", "dock_ts", "unload_end_ts",
                             "door", "pallets_ordered", "pallets", "pallets_rejected", "aged_load", "late_min",
                             "reefer_failure"],

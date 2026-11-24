@@ -22,7 +22,7 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 | Temperatures | °C |
 | Distances | metres (1 floor tile = 1 m) |
 | Flags | `0` / `1` integers |
-| Doors | Numbers painted on the building: receiving doors 1–4 (west wall), shipping doors 1–6 (east wall) |
+| Doors | Numbers painted on the building: receiving doors 1–6 (west wall), shipping doors 1–14 (east wall) |
 | Keys | `sku_code`, `store_id`, `route_id`, `plant_code`, `zone` are text codes. Numeric IDs (`order_id`, `pallet_id`, `truck_id`, `worker_id`, `lot`) are unique within one run (use them with `scenario` and `seed` in the database). |
 | Scope | Fictional company, products, plants and stores. The data is simulated (see "How the data is generated"). |
 
@@ -46,22 +46,22 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 | plant_code | text | Supplying plant (→ `dim_plant`) |
 | season | text | `xmas`, `bbq`, or empty for year-round products |
 
-### dim_store: one row per customer (12)
+### dim_store: one row per customer (48)
 | Column | Type | Meaning |
 |---|---|---|
-| store_id | text | Customer code (`S` grocery, `C` club, `R` restaurant) |
+| store_id | text | Customer code (`S` grocery, `C` club, `H` restaurant, from the HRI channel) |
 | name, city | text | Fictional customer name and city in Québec |
 | kind | text | `grocery`, `club`, `restaurant`. Changes the product mix. |
 | size_index | real | Relative order volume (1.0 = average grocery store) |
 | route_id | text | Delivery route (→ `dim_route`) |
 | stop | int | Stop number on the route (1 = delivered first, so loaded last) |
 
-### dim_route: one row per delivery route (6)
+### dim_route: one row per delivery route (16)
 | Column | Type | Meaning |
 |---|---|---|
-| route_id | text | `R1` … `R6` |
+| route_id | text | `R01` … `R16`, one departure per hour from 03:00 to 18:00 |
 | departure_hour | int | Scheduled departure hour every day (0–23) |
-| shipping_door | int | Shipping door used (1–6) |
+| shipping_door | int | Shipping door used (1–14) |
 
 ### dim_plant: one row per supplier (4)
 | Column | Type | Meaning |
@@ -83,7 +83,7 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 |---|---|---|
 | worker_id | int | Employee ID |
 | name | text | Fictional name |
-| role | text | `receiver`, `forklift`, `picker`, `loader`, `qa` |
+| role | text | `receiver` (unloads trailers), `taxi` (moves pallets from the dock to the drop points, 2 at a time), `forklift` (reach-truck driver, puts pallets away up to 5 levels), `picker`, `loader`, `qa` |
 | shift | text | `day` (06–14), `evening` (14–22), `night` (22–06) |
 | skill | real | Hidden productivity factor, about N(1, 0.15), clipped to 0.6–1.4. Faster picking, fewer mispicks. |
 
@@ -157,7 +157,7 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 |---|---|---|
 | shipment_id, truck_id | int | Truck ID |
 | route_id | text | Route |
-| door | int | Shipping door 1–6 |
+| door | int | Shipping door 1–14 |
 | scheduled_departure_ts / actual_departure_ts | ts | Planned and real departure. The truck waits at most 60 min. |
 | orders, pallets, cases | int | Load |
 | revenue | real | Fee earned on the load |
@@ -179,11 +179,11 @@ The sum of `cases` equals the sum of `fact_order_lines.cases_shipped` (tested). 
 | truck_id | int | Truck ID |
 | plant_code | text | Supplier |
 | scheduled_ts | ts | Planned arrival slot |
-| gate_ts | ts | Arrival at the gate |
-| dock_ts | ts | Backed onto a receiving door |
+| gate_ts | ts | Arrival at the gate. The trailer then waits in the yard until a door and a dock worker are free. |
+| dock_ts | ts | Backed onto a receiving door. Unloading starts after a 15-minute check-in (paperwork, seal, first probe). `dock_ts − gate_ts` is the yard wait. |
 | unload_end_ts | ts | Last pallet off |
-| door | int | Receiving door 1–4 |
-| pallets_ordered | int | What we ordered on this truck |
+| door | int | Receiving door 1–6 |
+| pallets_ordered | int | What we ordered on this truck (26–30 pallets on a 53' reefer) |
 | pallets | int | What arrived (the plant may short-ship) |
 | pallets_rejected | int | Refused at the door for temperature |
 | aged_load | int | 1 if the plant shipped older-than-usual product on this truck |
@@ -209,11 +209,11 @@ The opening stock (pallets in racks at the start of the run) has no receipt row.
 | Column | Type | Meaning |
 |---|---|---|
 | pallet_id, sku_code, zone | | Pallet and destination room |
-| slot_id, level | int | Rack slot and level |
+| slot_id, level | int | Rack slot and level (0 = floor … 4 = top beam) |
 | operator_id, forklift_id | int | Driver and truck |
 | start_ts / end_ts | ts | Move duration |
 | travel_m | real | Distance driven |
-| dock_dwell_min | real | Minutes the pallet waited on the dock (or in QA) before put-away. A cold-chain risk. |
+| dock_dwell_min | real | Minutes from receipt to rack (dock wait, taxi trip, drop-point wait, reach-truck move). A cold-chain risk. |
 
 ### fact_inventory_daily: snapshot at 00:00, one row per date × SKU
 | Column | Type | Meaning |
@@ -275,7 +275,7 @@ Sick calls show as missing shifts and as `ev_sick` events.
 | Column | Type | Meaning |
 |---|---|---|
 | ts | ts | Event time |
-| forklift_id | int | 1–5 counterbalance, 6–8 reach trucks |
+| forklift_id | int | 1–4 counterbalance, 5–18 reach trucks |
 | event | text | `plug`, `unplug`, `breakdown`, `repaired` |
 | battery_pct | real | Battery at the event |
 
@@ -285,6 +285,29 @@ Sick calls show as missing shifts and as `ev_sick` events.
 | ts | ts | Event time |
 | event_type | text | e.g. `ev_late_truck`, `ev_reefer`, `ev_door_stuck`, `ev_breakdown`, `ev_sick`, `ev_rush`, `ev_recall`, `log_rejected`, `log_qa_hold`, `log_spoiled`, `log_alarm`, `log_short`, `log_expedite`, `qa_decision`, `log_recall_*` |
 | detail | text | JSON with the event's fields, e.g. `{"lot": 4251, "sku": "C401", "pallets": 4}`. Read it in SQLite with `json_extract(detail, '$.lot')`. |
+
+### fact_incidents: one row per injury or forklift accident
+| Column | Type | Meaning |
+|---|---|---|
+| ts | ts | When it happened |
+| incident_id | int | ID |
+| category | text | `injury` (a person was hurt) or `forklift` (property damage only) |
+| incident_type | text | Injuries: `overexertion`, `slip_trip_fall`, `struck_by_object`, `caught_in`, `cold_stress_cut`, or forklift injuries `pedestrian_struck`, `tip_over`, `crushed_by_load`, `other`. Damage: `rack_strike`, `dropped_pallet`, `equipment_damage`. |
+| severity | text | `lost_time` (days off work), `medical_aid` (treated, home for the shift), `property_damage` |
+| worker_id, role | | Person injured, or the driver for damage incidents (empty if none) |
+| forklift_id | int | Forklift involved (empty for other injuries) |
+| zone | text | Where it happened |
+| days_lost | real | Calendar days off (lost-time only). The worker misses every shift until then, and nobody replaces them. |
+| cases_damaged | int | Cases destroyed (dropped pallet) |
+| cost | real | Income replacement (90 % of wages, CNESST-style), first aid ($150), rack repair ($900) or product destroyed |
+
+Rates (`config.py`, incidents section): lost-time injuries 1.30 per 100 workers per year
+(Ontario transportation & warehousing, 2022), applied per worker-hour on shift, with 2.5 treated
+injuries per lost-time one (assumption). Forklift accidents are applied per hour a forklift is
+driven; the injury types follow the IRSST split of serious Québec forklift accidents (struck pedestrian
+31 %, tip-over 28 %, crushed by the load 22 %, other 19 %). Property damage is 30 per forklift
+injury (Bird's safety triangle, an assumption). The `chaos` scenario triples all rates. At real rates,
+incidents are rare: about 3 injuries in 180 days at baseline.
 
 ### fact_weather: one row per day
 | Column | Type | Meaning |
@@ -297,7 +320,7 @@ Sick calls show as missing shifts and as `ev_sick` events.
 |---|---|---|
 | date | date | |
 | revenue, costs, profit | real | Day P&L ($) |
-| wages, energy, spoilage, penalties, rejected_cost, expedite_cost, repair_cost, fixed_cost | real | Cost breakdown. `rejected_cost` is handling ($45 per pallet) when the supplier is liable, or full product value for pallets that went out of spec in our building. |
+| wages, energy, spoilage, penalties, rejected_cost, expedite_cost, repair_cost, incident_cost, fixed_cost | real | Cost breakdown. `rejected_cost` is handling ($45 per pallet) when the supplier is liable, or full product value for pallets that went out of spec in our building. |
 | cases_shipped, cases_picked | int | Volume |
 | orders | int | Orders closed that day |
 | on_time, fill_rate | real | Share of orders on time and cases shipped ÷ ordered, for orders closed that day |
@@ -307,7 +330,8 @@ Sick calls show as missing shifts and as `ev_sick` events.
 | temp_alarms | int | Zone alarms raised |
 | pallets_received, pallets_rejected, pallets_qa | int | Inbound |
 | inbound_trucks, inbound_late | int | Inbound trucks arrived, and those more than 15 min late |
-| breakdowns, expedites, spoiled_cases, sick_calls | int | Incidents |
+| breakdowns, expedites, spoiled_cases, sick_calls | int | Operational incidents |
+| injuries_lost_time, injuries_medical, forklift_incidents, damaged_cases | int | Safety incidents that day (see `fact_incidents`) |
 | cash | real | Closing cash balance |
 
 ---
@@ -330,6 +354,8 @@ that dashboards and models have real signal to find:
 | Freezer door events warm the air, and energy use rises afterwards | `fact_temperature`, `fact_energy_daily` |
 | Outdoor heat raises refrigeration energy | `fact_energy_daily` × `fact_weather` |
 | Random incidents: late trucks, reefer failures, breakdowns, sick calls, rush orders, recalls | `fact_events` |
+| Inbound trailers arrive in an early-morning rush and wait in the yard for a door and a dock worker | `fact_inbound_trucks.dock_ts − gate_ts` |
+| Injuries and forklift accidents at Canadian rates. A lost-time injury leaves its shift short-staffed for days. | `fact_incidents`, `fact_labor` |
 
 Scenarios (`config.SCENARIOS`) change only the listed settings, so the differences between runs
 with the same seed are caused by that change, plus the random paths that diverge from it.

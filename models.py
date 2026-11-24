@@ -88,12 +88,13 @@ class RackSlot:
 
 @dataclass
 class Spot:
-    """A floor position for one pallet: inbound staging, outbound lane or QA cage."""
+    """A floor position for one pallet: inbound staging, outbound lane, QA cage or drop point."""
     id: int
-    kind: str              # in / out / qa
+    kind: str              # in / out / qa / drop (aisle-end pick-up point for reach trucks)
     x: int
     y: int
     door: int | None = None
+    zone: str | None = None    # drop points: the cold room they serve
     pallet: int | None = None
     reserved: int | None = None
 
@@ -176,7 +177,9 @@ class Worker:
     job: int | None = None
     forklift: int | None = None
     carrying: int | None = None
+    cargo: list = field(default_factory=list)       # taxi: pallet ids on the rider jack (max TAXI_PALLETS)
     jack_load: list = field(default_factory=list)   # [sku, lot, cases, kg]
+    injured_until: float = 0.0                      # off work (lost-time injury) until this sim time
     activity: str = ""
     break_at: float = 0.0
     break_done: bool = False

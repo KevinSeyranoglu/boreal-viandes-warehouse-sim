@@ -28,24 +28,45 @@ START_HOUR = 5.5
 RANDOM_SEED = 42
 END_OF_DAY_SCREEN = True           # pause on a summary screen at midnight
 
-# ------------------------------------------------------------------ map
-MAP_W, MAP_H = 180, 92
-BUILDING = (40, 4, 139, 76)        # x0, y0, x1, y1 (outer walls)
-RECEIVING_DOOR_Y = [18, 30, 42, 54]
-SHIPPING_DOOR_Y = [12, 22, 32, 42, 52, 62]
-ROAD_Y0, ROAD_Y1 = 80, 89
-RACK_LEVELS = 2
-RACK_AISLE_W = 4                   # forklift aisle between back-to-back rack rows
-RACK_CROSS_AISLE_W = 3             # aisle across the ends of the rack rows
-RACK_RUN_MAX = 13                  # longer rack rows are split by a middle cross aisle
+# ------------------------------------------------------------------ site size (the layout is generated from these)
+RECEIVING_DOORS = 6
+SHIPPING_DOORS = 14
+ROOMS = {"fresh": 5, "processed": 4, "freezer": 5}   # back-to-back rack pairs per cold room
+RACK_LEVELS = 5                    # beam levels; level 0 is the floor, the rest need a reach truck
+RACK_RUN = 22                      # tiles per rack run (11 two-tile bays)
+RACK_SEGMENTS = 3                  # runs per row, separated by 2-tile cross aisles
+PARKING_ROWS, PARKING_PER_ROW = 4, 8   # truck yard south of the road (trailers waiting for a door)
 TRUCK_LEN = 16
 TRUCK_W = 3
-TRUCK_CAPACITY = 24                # pallets per trailer
-PARKING_Y = [64, 68, 72]           # inbound waiting spots in the west yard
+TRUCK_CAPACITY = 30                # max pallets on a 53' reefer trailer
+TRUCK_CAPACITY_MIN = 28            # each inbound trailer is loaded to 28–30 pallets
+OUTBOUND_TRUCK_CAPACITY = 30
+
+# ---- derived geometry (tiles). Don't edit: change the numbers above.
+_BX0, _BY0 = 44, 4                                     # west wall, north wall
+_ROOM_W = {k: 5 * n + 5 for k, n in ROOMS.items()}     # wall + 2-wide pitch per pair + aisles
+ROOM_Y0 = _BY0 + 16                                    # north wall of the cold rooms
+ROOM_Y1 = ROOM_Y0 + 3 + RACK_SEGMENTS * RACK_RUN + (RACK_SEGMENTS - 1) * 2 + 3
+ROOM_X = {}
+_x = _BX0 + 18
+for _k, _w in _ROOM_W.items():
+    ROOM_X[_k] = _x
+    _x += _w + 2
+_BX1 = _x + 16                                         # east wall
+BUILDING = (_BX0, _BY0, _BX1, ROOM_Y1 + 4)             # x0, y0, x1, y1 (outer walls)
+RECEIVING_DOOR_Y = [ROOM_Y0 - 6 + i * ((BUILDING[3] - ROOM_Y0) // RECEIVING_DOORS) for i in range(RECEIVING_DOORS)]
+SHIPPING_DOOR_Y = [_BY0 + 8 + i * 6 for i in range(SHIPPING_DOORS)]
+ROAD_Y0, ROAD_Y1 = BUILDING[3] + 4, BUILDING[3] + 13
+IN_LANE_Y, OUT_LANE_Y = ROAD_Y0 + 2.5, ROAD_Y0 + 6.5
+PARKING = [(12 + 20 * i, ROAD_Y1 + 5 + 4 * r) for r in range(PARKING_ROWS) for i in range(PARKING_PER_ROW)]
+MAP_W = _BX1 + 41
+MAP_H = PARKING[-1][1] + 4
+assert SHIPPING_DOOR_Y[-1] + 2 < BUILDING[3] and RECEIVING_DOOR_Y[-1] + 2 < BUILDING[3], "too many doors"
 
 # ------------------------------------------------------------------ movement (tiles per sim-second)
 WALK_SPEED = 1.25
 JACK_SPEED = 1.0                   # walking with a loaded pallet jack
+TAXI_SPEED = 2.0                   # rider pallet jack ("taxi"), loaded or not
 FORKLIFT_SPEED = 2.2
 REACH_SPEED = 1.8
 TRUCK_SPEED = 2.2
@@ -56,6 +77,7 @@ DOOR_OPEN_SECONDS = 20.0           # dock door roll-up time
 
 # ------------------------------------------------------------------ task durations (sim-seconds)
 UNLOAD_SCAN_S = 90                 # scan, probe the pallet temperature, label
+DOCK_CHECKIN_S = 900               # paperwork, seal check, first probe before unloading starts
 DROP_S = 10
 FORK_ENGAGE_S = 8
 FORK_LIFT_S = 6
@@ -67,10 +89,12 @@ WRAP_S = 90                        # stretch-wrap + label
 LOAD_S = 40
 QA_INSPECT_S = 600
 PALLET_MAX_CASES = 60              # cases on one mixed outbound pallet
+TAXI_PALLETS = 2                   # a taxi carries up to 2 pallets per trip (dock -> drop point)
+TAXI_MAX_WAIT_S = 600              # ...and leaves with 1 if a pallet has waited this long
 MEAL_BREAK_S = 1800
 
 # ------------------------------------------------------------------ forklifts
-FORKLIFTS = [("forklift", 5), ("reach", 3)]
+FORKLIFTS = [("forklift", 4), ("reach", 14)]
 BATTERY_DRAIN_PER_TILE = 0.02      # % per metre driven
 BATTERY_DRAIN_PER_LIFT = 0.15      # % per lift cycle
 BATTERY_IDLE_DRAIN_PER_H = 0.5
@@ -82,13 +106,13 @@ FORKLIFT_REPAIR_COST = 450.0
 
 # ------------------------------------------------------------------ staff
 SHIFTS = {"day": (6, 14), "evening": (14, 22), "night": (22, 6)}
-ROLES = ["receiver", "forklift", "picker", "loader", "qa"]
-HEADCOUNT = {     # calibrated so pickers run ~50 % busy and on-time ≈ 96 % (see SCENARIOS)
-    "day":     {"receiver": 2, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
-    "evening": {"receiver": 1, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
-    "night":   {"receiver": 1, "forklift": 1, "picker": 2, "loader": 1, "qa": 0},
+ROLES = ["receiver", "taxi", "forklift", "picker", "loader", "qa"]
+HEADCOUNT = {     # "forklift" = reach-truck drivers (put-away to height); "taxi" = dock -> drop point
+    "day":     {"receiver": 5, "taxi": 2, "forklift": 3, "picker": 18, "loader": 3, "qa": 1},
+    "evening": {"receiver": 2, "taxi": 1, "forklift": 2, "picker": 18, "loader": 3, "qa": 1},
+    "night":   {"receiver": 3, "taxi": 2, "forklift": 2, "picker": 9, "loader": 2, "qa": 1},
 }
-WAGES = {"receiver": 26.5, "forklift": 28.0, "picker": 25.0, "loader": 25.0, "qa": 31.0}
+WAGES = {"receiver": 26.5, "taxi": 26.5, "forklift": 28.0, "picker": 25.0, "loader": 25.0, "qa": 31.0}
 SHIFT_PREMIUM = {"day": 1.0, "evening": 1.05, "night": 1.12}
 SKILL_SD = 0.15                    # worker skill ~ N(1, sd)
 SICK_PROB = 0.03                   # chance a worker calls in sick for a shift
@@ -106,11 +130,11 @@ LAST_NAMES = ["Tremblay", "Gagnon", "Roy", "Côté", "Bouchard", "Gauthier", "Mo
 # ------------------------------------------------------------------ temperature zones
 #        setpoint, min, max (spec), refrigeration kW at rest
 ZONES = {
-    "dock":      {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 35.0},
-    "fresh":     {"setpoint": 0.5,   "min": -1.0,  "max": 2.0,   "kw": 45.0},
-    "processed": {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 40.0},
-    "freezer":   {"setpoint": -20.0, "min": -25.0, "max": -15.0, "kw": 140.0},
-    "qa":        {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 6.0},
+    "dock":      {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 90.0},
+    "fresh":     {"setpoint": 0.5,   "min": -1.0,  "max": 2.0,   "kw": 115.0},
+    "processed": {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 100.0},
+    "freezer":   {"setpoint": -20.0, "min": -25.0, "max": -15.0, "kw": 350.0},
+    "qa":        {"setpoint": 2.0,   "min": 0.0,   "max": 4.0,   "kw": 8.0},
 }
 ZONE_TAU_S = 1800.0                # refrigeration time constant
 ROOM_DOOR_PASS_S = 25.0            # a cold-room door stays open this long per pass
@@ -168,13 +192,13 @@ CATEGORY_COLORS = {
 # short_prob: chance each ordered pallet is not shipped; aged_prob: chance a whole load is old stock
 PLANTS = {
     "PORC": {"fr": "Usine de porc – Beauce", "en": "Pork plant – Beauce",
-             "hours": [1, 7, 13, 19], "late_mean": 10, "late_sd": 35, "short_prob": 0.03, "aged_prob": 0.06},
+             "hours": [3, 9], "late_mean": 10, "late_sd": 35, "short_prob": 0.03, "aged_prob": 0.06},
     "VOLA": {"fr": "Usine de volaille – Lanaudière", "en": "Poultry plant – Lanaudière",
-             "hours": [3, 9, 15, 21], "late_mean": 20, "late_sd": 45, "short_prob": 0.07, "aged_prob": 0.09},
+             "hours": [3, 10], "late_mean": 20, "late_sd": 45, "short_prob": 0.07, "aged_prob": 0.09},
     "TRAN": {"fr": "Usine de transformation – Montérégie", "en": "Further-processing plant – Montérégie",
-             "hours": [5, 14], "late_mean": 5, "late_sd": 25, "short_prob": 0.02, "aged_prob": 0.04},
+             "hours": [4], "late_mean": 5, "late_sd": 25, "short_prob": 0.02, "aged_prob": 0.04},
     "SURG": {"fr": "Entrepôt de congélation – Mauricie", "en": "Cold storage – Mauricie",
-             "hours": [8, 17], "late_mean": 30, "late_sd": 60, "short_prob": 0.05, "aged_prob": 0.05},
+             "hours": [5], "late_mean": 30, "late_sd": 60, "short_prob": 0.05, "aged_prob": 0.05},
 }
 LATENESS_CLIP_MIN = (-60, 240)
 PACK_AGE_DAYS = {"fresh": (0, 2), "processed": (1, 5), "freezer": (5, 60)}
@@ -183,30 +207,37 @@ ORDER_NOISE_CV = 0.20              # buyer's order quantity error (forecast + ju
 
 # ------------------------------------------------------------------ inventory policy
 COVER_DAYS = {"fresh": 2.0, "processed": 4.0, "freezer": 8.0}   # days of stock targeted on order
-MIN_INBOUND_PALLETS = 10           # a plant only sends another truck if each one carries at least this
+MIN_INBOUND_PALLETS = 26           # a plant only sends another truck if each one carries at least this
 MIN_REMAINING_DAYS = {"fresh": 3, "processed": 7, "freezer": 30}
 
 # ------------------------------------------------------------------ customers (fictional)
+# 48 stores on 16 routes (3 stops each). Fixed list, so every run and dashboard sees the same network.
 # id, name, city, kind, size, route, stop (1 = delivered first)
-STORES = [
-    ("S12", "Marché Saint-Laurent #12", "Montréal", "grocery", 1.0, "R1", 1),
-    ("S04", "Épicerie du Plateau #4", "Montréal", "grocery", 0.7, "R1", 2),
-    ("S31", "SuperFrais Laval #31", "Laval", "grocery", 1.1, "R2", 1),
-    ("S08", "Marché des Mille-Îles #8", "Terrebonne", "grocery", 0.8, "R2", 2),
-    ("C03", "Club Entrepôt Gatineau #3", "Gatineau", "club", 1.8, "R3", 1),
-    ("R01", "Bistro Le Vieux-Port", "Québec", "restaurant", 0.3, "R4", 1),
-    ("S22", "Épicerie Fleurie Québec #22", "Québec", "grocery", 0.9, "R4", 2),
-    ("S27", "Marché Sainte-Foy #27", "Québec", "grocery", 1.0, "R4", 3),
-    ("S15", "Épicerie Sherbrooke Est #15", "Sherbrooke", "grocery", 0.8, "R5", 1),
-    ("R02", "Resto-Grill Le Fumoir", "Granby", "restaurant", 0.35, "R5", 2),
-    ("S09", "Marché Trois-Rivières #9", "Trois-Rivières", "grocery", 0.9, "R6", 1),
-    ("C07", "Club Entrepôt Lévis #7", "Lévis", "club", 1.6, "R6", 2),
-]
-# route id -> departure hour, shipping door index (0..5)
-ROUTES = {"R1": (5, 0), "R2": (8, 1), "R3": (11, 2), "R4": (14, 3), "R5": (17, 4), "R6": (20, 5)}
+_CHAINS = {"grocery": ["Marché Saint-Laurent", "Épicerie du Quartier", "SuperFrais", "Marché Fleuri",
+                       "Épicerie Boréale", "Marché du Village"],
+           "club": ["Club Entrepôt"], "restaurant": ["Bistro", "Resto-Grill", "Brasserie"]}
+_ROUTE_CITIES = ["Montréal", "Montréal", "Laval", "Longueuil", "Terrebonne", "Gatineau", "Québec", "Québec",
+                 "Lévis", "Sherbrooke", "Trois-Rivières", "Granby", "Saint-Jérôme", "Drummondville",
+                 "Saint-Hyacinthe", "Saguenay"]
+_KINDS = ["grocery", "grocery", "restaurant", "grocery", "club", "grocery", "grocery", "restaurant"]
+_SIZES = {"grocery": [0.7, 0.9, 1.0, 1.1, 1.2, 0.8], "club": [1.6, 1.8, 2.0], "restaurant": [0.25, 0.35, 0.3]}
+STORES = []
+for _r, _city in enumerate(_ROUTE_CITIES):
+    for _stop in (1, 2, 3):
+        _n = len(STORES)
+        _kind = _KINDS[_n % len(_KINDS)]
+        _chain = _CHAINS[_kind][_n % len(_CHAINS[_kind])]
+        _prefix = {"grocery": "S", "club": "C", "restaurant": "H"}[_kind]
+        _num = 10 + (_n * 7) % 89
+        _name = f"{_chain} {_city} #{_num}" if _kind != "restaurant" else f"{_chain} {_city} {_n}"
+        STORES.append((f"{_prefix}{_n + 1:02d}", _name, _city, _kind,
+                       _SIZES[_kind][_n % len(_SIZES[_kind])], f"R{_r + 1:02d}", _stop))
+# route id -> departure hour, shipping door index (0..SHIPPING_DOORS-1); one departure per hour 03:00–18:00
+ROUTES = {f"R{i + 1:02d}": (3 + i, i % SHIPPING_DOORS) for i in range(len(_ROUTE_CITIES))}
 ORDER_WINDOW_H = (8, 14)           # orders arrive 14 h to 8 h before departure
 CUTOFF_H = 4                       # wave released (allocated + picked) 4 h before departure
-OUTBOUND_ARRIVE_BEFORE_H = 2.0
+OUTBOUND_ARRIVE_BEFORE_H = 2.0     # empty trailer pulled to its shipping door
+OUTBOUND_YARD_BEFORE_H = 8.0       # carrier drops the empty trailer in the yard
 LOAD_RELAX_MIN = 30                # in the last 30 min, load in any order
 DEPARTURE_GRACE_MIN = 15           # still "on time" up to 15 min late
 DEPARTURE_MAX_WAIT_MIN = 60        # truck leaves with what it has after this
@@ -216,7 +247,7 @@ KIND_MIX = {                       # demand multiplier by store kind and categor
     "club":       {"pork": 0.9, "poultry": 0.9, "processed": 1.0, "frozen": 1.6},
     "restaurant": {"pork": 1.6, "poultry": 1.4, "processed": 0.7, "frozen": 0.5},
 }
-DEMAND_SCALE = 1.3                 # multiplies every SKU's base demand (network volume)
+DEMAND_SCALE = 6.5                 # multiplies every SKU's base demand (≈ 25,000 cases/day network)
 WEEKDAY_FACTOR = [1.0, 0.95, 1.0, 1.15, 1.2, 0.85, 0.6]   # Monday..Sunday
 DEMAND_CV = 0.35
 LINE_SKIP_PROB = 0.08
@@ -238,24 +269,48 @@ LATE_PENALTY_PER_ORDER = 250.0
 SHORT_PENALTY_PER_CASE = 12.0
 MISPICK_PENALTY = 35.0
 EXPEDITE_COST = 380.0
-FIXED_DAILY_COST = 9_000.0         # rent, maintenance, admin
+FIXED_DAILY_COST = 67_000.0        # rent, maintenance, admin, fleet, IT (≈ 4 % net margin at baseline)
 REJECTED_LOAD_COST_SHARE = 1.0     # share of product value lost on pallets WE let go out of spec
 REJECT_HANDLING_COST = 45.0        # $ per pallet refused at the door / failed inbound QA (supplier credits the product)
 COMPLIANCE_TARGET = 0.98
 
 # ------------------------------------------------------------------ random events (expected per day)
 EVENT_RATES = {
-    "late_truck": 1.5,
-    "reefer_failure": 0.35,
-    "freezer_door": 0.25,
-    "forklift_breakdown": 0.4,
-    "rush_order": 0.5,
+    "late_truck": 4.0,
+    "reefer_failure": 1.0,
+    "freezer_door": 0.5,
+    "forklift_breakdown": 1.5,
+    "rush_order": 2.0,
     "recall": 0.07,
 }
 FREEZER_DOOR_STUCK_MIN = (20, 90)
 LATE_TRUCK_EXTRA_MIN = (60, 240)
 RECALL_AUTO_PULL_H = (1.0, 4.0)    # supervisor pulls the lot if the player does not
 DISPOSE_AFTER_H = 2.0
+
+# ------------------------------------------------------------------ incidents (injuries, forklift accidents)
+# Rates are per hour worked (injuries) or per hour a forklift is driven (forklift accidents).
+# Sources: lost-time injury rate 1.30 per 100 workers per year in transportation & warehousing
+# (Ontario OHS report 2022-23); forklift accident types among 87 serious/fatal Québec cases
+# (IRSST R-601): struck pedestrian 31 %, tip-over 28 %, crushed by the load 22 %, other 19 %.
+# Values marked "assumption" have no Canadian statistic behind them and are documented as such.
+FTE_HOURS_PER_YEAR = 2000
+LOST_TIME_INJURY_RATE = 1.30 / 100 / FTE_HOURS_PER_YEAR     # per worker-hour
+MEDICAL_AID_PER_LOST_TIME = 2.5    # assumption: treated injuries (back next shift) per lost-time injury
+INJURY_TYPES = {                   # assumption: typical warehouse mix (manual handling dominates)
+    "overexertion": 0.40, "slip_trip_fall": 0.22, "struck_by_object": 0.18,
+    "caught_in": 0.08, "cold_stress_cut": 0.12,
+}
+INJURY_DAYS_LOST = (10, 1.0, 180)  # assumption: lognormal median days off, sigma, cap
+INJURY_INDEMNITY_SHARE = 0.90      # CNESST income replacement: 90 % of net salary (cost model)
+FORKLIFT_INJURY_RATE = 1.5 * LOST_TIME_INJURY_RATE           # assumption: drivers 1.5x average risk, per driven hour
+FORKLIFT_INJURY_TYPES = {"pedestrian_struck": 0.31, "tip_over": 0.28, "crushed_by_load": 0.22, "other": 0.19}
+FORKLIFT_DAMAGE_PER_INJURY = 30    # assumption: Bird's safety triangle (1 serious : 30 property damage)
+FORKLIFT_DAMAGE_TYPES = {"rack_strike": 0.45, "dropped_pallet": 0.35, "equipment_damage": 0.20}   # assumption
+RACK_REPAIR_HOURS = (4, 24)        # damaged bay out of service
+RACK_REPAIR_COST = 900.0
+DROPPED_PALLET_LOSS = (0.10, 0.50) # share of the pallet's cases destroyed
+INCIDENT_RATE_MULT = 1.0           # scenario knob
 
 # ------------------------------------------------------------------ data export
 DATA_DIR = "data"
@@ -264,17 +319,18 @@ TEMP_LOG_EVERY_MIN = 5
 # ------------------------------------------------------------------ scenarios (python main.py --scenario NAME)
 SCENARIOS = {
     "baseline": {},
-    "lean_staff": {"HEADCOUNT": {      # one picker fewer on day/evening, one forklift fewer
-        "day":     {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 1},
-        "evening": {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 1},
-        "night":   {"receiver": 1, "forklift": 1, "picker": 2, "loader": 1, "qa": 0}}},
-    "extra_pickers": {"HEADCOUNT": {   # +2 pickers day/evening, +1 night
-        "day":     {"receiver": 2, "forklift": 2, "picker": 6, "loader": 1, "qa": 1},
-        "evening": {"receiver": 1, "forklift": 2, "picker": 6, "loader": 1, "qa": 1},
-        "night":   {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 0}}},
+    "lean_staff": {"HEADCOUNT": {      # 2 pickers fewer per shift (1 at night), one receiver fewer on day
+        "day":     {"receiver": 4, "taxi": 2, "forklift": 3, "picker": 16, "loader": 3, "qa": 1},
+        "evening": {"receiver": 2, "taxi": 1, "forklift": 2, "picker": 16, "loader": 3, "qa": 1},
+        "night":   {"receiver": 3, "taxi": 2, "forklift": 2, "picker": 8, "loader": 2, "qa": 1}}},
+    "extra_pickers": {"HEADCOUNT": {   # +4 pickers day/evening, +2 night
+        "day":     {"receiver": 5, "taxi": 2, "forklift": 3, "picker": 22, "loader": 3, "qa": 1},
+        "evening": {"receiver": 2, "taxi": 1, "forklift": 2, "picker": 22, "loader": 3, "qa": 1},
+        "night":   {"receiver": 3, "taxi": 2, "forklift": 2, "picker": 11, "loader": 2, "qa": 1}}},
     "summer_bbq": {"START_DATE": (2026, 6, 15)},
-    "chaos": {"EVENT_RATES": {"late_truck": 4.0, "reefer_failure": 1.5, "freezer_door": 1.0,
-                              "forklift_breakdown": 1.5, "rush_order": 1.5, "recall": 0.3}},
+    "chaos": {"EVENT_RATES": {"late_truck": 10.0, "reefer_failure": 4.0, "freezer_door": 2.0,
+                              "forklift_breakdown": 5.0, "rush_order": 5.0, "recall": 0.3},
+              "INCIDENT_RATE_MULT": 3.0},
 }
 
 

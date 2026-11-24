@@ -17,17 +17,20 @@ import subprocess
 import sys
 import time
 
-# --record camera presets: tile the view centres on, zoom (None = whole site)
-CAMERAS = {
-    "site": None,
-    "receiving": (38, 34, 1.25),        # all 4 receiving doors + staging + first cold room
-    "shipping": (138, 37, 1.1),         # all 6 shipping doors + outbound lanes
-    "freezer": (111, 46, 1.3),
-    "picking": (90, 46, 0.9),
-}
-
 import config as C
 import i18n
+
+# --record camera presets: tile the view centres on, zoom (None = whole site)
+_BX0, _BY0, _BX1, _BY1 = C.BUILDING
+CAMERAS = {
+    "site": None,
+    "receiving": (_BX0 - 2, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.8),         # receiving doors, staging, trailers
+    "shipping": (_BX1 + 2, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.8),          # shipping doors and outbound lanes
+    "freezer": (C.ROOM_X["freezer"] + 15, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.9),
+    "picking": ((_BX0 + _BX1) / 2, C.ROOM_Y0 + 20, 0.65),
+    "yard": (_BX0 + 10, (C.RECEIVING_DOOR_Y[0] + C.PARKING[-1][1]) / 2, 0.5),   # receiving doors + trailer yard
+    "taxi": (C.ROOM_X["fresh"] - 6, C.ROOM_Y0 - 2, 1.4),                 # dock -> drop points
+}
 
 
 def parse_args(argv=None):

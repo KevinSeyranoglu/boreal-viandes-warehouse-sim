@@ -66,9 +66,11 @@ def test_shipped_lots_match_order_lines(db):
 
 
 def test_door_numbers_are_human(db):
-    assert db.execute("SELECT MIN(door), MAX(door) FROM fact_inbound_trucks").fetchone()[0] >= 1
+    import config as C
+    lo, hi = db.execute("SELECT MIN(door), MAX(door) FROM fact_inbound_trucks").fetchone()
+    assert 1 <= lo and hi <= C.RECEIVING_DOORS
     lo, hi = db.execute("SELECT MIN(door), MAX(door) FROM fact_shipments").fetchone()
-    assert 1 <= lo and hi <= 6
+    assert 1 <= lo and hi <= C.SHIPPING_DOORS
 
 
 def test_sim_rows_match_data_contract():

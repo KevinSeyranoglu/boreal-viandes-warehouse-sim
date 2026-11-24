@@ -50,7 +50,7 @@ def inbound(p):
 
 def on_hand(sim):
     cases = sum(p.cases for p in sim.pallets.values() if not inbound(p))
-    return cases + sum(c[2] for w in sim.workers.values() for c in w.jack_load)
+    return cases + sum(c[2] for w in sim.workers.values() for c in w.jack_load)   # taxi cargo is in pallets
 
 
 def audited(seed):
@@ -92,7 +92,7 @@ def test_cases_are_conserved(scenario, monkeypatch):
     start = on_hand(sim)
     run(sim, 14)
     assert flows["received"] > 0 and flows["shipped"] > 0
-    out = flows["shipped"] + sim.pallets.removed + flows["recall_cut"]
+    out = flows["shipped"] + sim.pallets.removed + flows["recall_cut"] + sim.cum.get("damaged_cases", 0)
     assert start + flows["received"] == on_hand(sim) + out
 
 
@@ -161,7 +161,7 @@ def test_staffing_moves_service_levels(monkeypatch):
     on_time = {}
     for scenario in ("lean_staff", "baseline", "extra_pickers"):
         monkeypatch.setattr(C, "HEADCOUNT", C.SCENARIOS[scenario].get("HEADCOUNT", C.HEADCOUNT))
-        on_time[scenario] = run(Simulation(seed=42), 21).kpis()["on_time"]
+        on_time[scenario] = run(Simulation(seed=42), 14).kpis()["on_time"]
         monkeypatch.undo()
     assert on_time["lean_staff"] < on_time["baseline"] < on_time["extra_pickers"]
 

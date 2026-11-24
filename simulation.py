@@ -21,11 +21,16 @@ from pathfinding import NavGrid
 
 YARD, ROAD, FLOOR, WALL, RACK, DOCKDOOR = range(6)
 DAY = 86400.0
-ROOM_X = {"fresh": 58, "processed": 80, "freezer": 102}
-ROOM_Y0, ROOM_Y1 = 20, 72
-NORTH_ROOMS = {"qa": (58, 77), "break": (102, 111), "office": (113, 121)}
-CHARGING_AREA = (80, 5, 99, 14)
-SPAWN = (117, 9)
+ROOM_X = C.ROOM_X                      # generated from the site size in config.py
+ROOM_Y0, ROOM_Y1 = C.ROOM_Y0, C.ROOM_Y1
+_BX0, _BY0, _BX1, _BY1 = C.BUILDING
+_RX0 = min(ROOM_X.values())
+_N_CHARGERS = sum(n for _, n in C.FORKLIFTS)
+_CHARGE_W = 4 * ((_N_CHARGERS + 1) // 2) + 3
+NORTH_ROOMS = {"qa": (_RX0, _RX0 + 19), "break": (_RX0 + 24 + _CHARGE_W, _RX0 + 39 + _CHARGE_W),
+               "office": (_RX0 + 42 + _CHARGE_W, _RX0 + 53 + _CHARGE_W)}
+CHARGING_AREA = (_RX0 + 21, _BY0 + 1, _RX0 + 21 + _CHARGE_W, _BY0 + 10)
+SPAWN = ((NORTH_ROOMS["office"][0] + NORTH_ROOMS["office"][1]) // 2, _BY0 + 5)
 ZONE_ORDER = {"fresh": 0, "processed": 1, "freezer": 2}
 PRODUCT_SPEC_MAX = {"fresh": 4.0, "processed": 4.0, "freezer": -15.0, "chilled": 4.0, "frozen": -15.0}
 DOCK_DWELL_GRACE_S = 45 * 60
@@ -33,15 +38,19 @@ DOCK_DWELL_GRACE_S = 45 * 60
 # job kinds a role will take, tier by tier (best priority wins inside a tier)
 ROLE_JOBS = {
     "receiver": [["unload"], ["load"]],
+    "taxi": [["taxi"]],
     "forklift": [["move_qa", "putaway"]],
     "picker": [["pick"], ["load"]],
     "loader": [["load"], ["unload"]],
     "qa": [["inspect"]],
 }
 FORKLIFT_JOBS = {"putaway", "move_qa"}
-JOB_KINDS = ("unload", "putaway", "move_qa", "inspect", "pick", "load")
-IDLE_POINTS = {"receiver": (44, 36), "forklift": (90, 13), "picker": (90, 17),
-               "loader": (131, 37), "qa": (67, 9)}
+JOB_KINDS = ("unload", "taxi", "putaway", "move_qa", "inspect", "pick", "load")
+_MID_Y = (ROOM_Y0 + ROOM_Y1) // 2
+IDLE_POINTS = {"receiver": (_BX0 + 4, _MID_Y), "taxi": (_BX0 + 12, _BY0 + 13),
+               "forklift": ((CHARGING_AREA[0] + CHARGING_AREA[2]) // 2, _BY0 + 13),
+               "picker": ((_RX0 + _BX1) // 2, ROOM_Y0 - 3), "loader": (_BX1 - 8, _MID_Y),
+               "qa": (_RX0 + 9, _BY0 + 5)}
 
 
 def G(x, y):
@@ -91,61 +100,82 @@ class Layout:
 
         self.areas = {}
         for name, (x0, x1) in NORTH_ROOMS.items():
-            fill(x0, by0, x1, 15, WALL)
-            fill(x0 + 1, by0 + 1, x1 - 1, 14, FLOOR)
+            fill(x0, by0, x1, by0 + 11, WALL)
+            fill(x0 + 1, by0 + 1, x1 - 1, by0 + 10, FLOOR)
             mid = (x0 + x1) // 2
-            fill(mid - 1, 15, mid + 1, 15, FLOOR)
-            self.areas[name] = (x0, by0, x1, 15)
+            fill(mid - 1, by0 + 11, mid + 1, by0 + 11, FLOOR)
+            self.areas[name] = (x0, by0, x1, by0 + 11)
         self.areas["charging"] = CHARGING_AREA
 
         self.room_door = {}          # tile index -> zone key
         self.slots = []
+        self.spots = []
+        seg_starts = [ROOM_Y0 + 3 + i * (C.RACK_RUN + 2) for i in range(C.RACK_SEGMENTS)]
         for key, x0 in ROOM_X.items():
-            x1 = x0 + 19
+            pairs = C.ROOMS[key]
+            x1 = x0 + 5 * pairs + 4
             fill(x0, ROOM_Y0, x1, ROOM_Y1, WALL)
             fill(x0 + 1, ROOM_Y0 + 1, x1 - 1, ROOM_Y1 - 1, FLOOR)
-            for k, ax in enumerate((x0 + 1, x0 + 6, x0 + 11, x0 + 16)):
-                wy = ROOM_Y0 if k in (0, 3) else ROOM_Y1
-                for x in range(ax, ax + 3):
+            for k in range(pairs + 1):                    # one 3-wide opening per aisle
+                ax = x0 + 1 + 5 * k
+                wy = ROOM_Y0 if k % 2 == 0 else ROOM_Y1   # alternate north / south doors
+                for x in range(ax, min(ax + 3, x1)):
                     t[wy * W_ + x] = FLOOR
                     self.room_door[wy * W_ + x] = key
-            for rc in (x0 + 4, x0 + 9, x0 + 14):
+            for p in range(pairs):
+                rc = x0 + 4 + 5 * p
                 for col, acc in ((rc, rc - 1), (rc + 1, rc + 2)):
-                    for ys, ye in ((23, 44), (47, 68)):
+                    for ys in seg_starts:
+                        ye = ys + C.RACK_RUN - 1
                         fill(col, ys, col, ye, RACK)
                         for by in range(ys, ye + 1, 2):
                             for lvl in range(C.RACK_LEVELS):
                                 self.slots.append(RackSlot(id=len(self.slots), zone=key, x=col, y=by,
                                                            level=lvl, ax=acc, ay=by))
             self.areas[key] = (x0, ROOM_Y0, x1, ROOM_Y1)
+            # drop points (P&D) in the corridor in front of the room: taxis drop, reach trucks pick up
+            for x in range(x0 + 1, x1, 2):
+                self.spots.append(Spot(id=len(self.spots), kind="drop", x=x, y=ROOM_Y0 - 2, zone=key))
 
-        self.spots = []
         for d in self.doors:
-            xs = range(46, 56) if d.side == "in" else range(124, 136)
+            xs = range(bx0 + 6, bx0 + 16) if d.side == "in" else range(bx1 - 17, bx1 - 3)
             for row in (d.y - 1, d.y + 1):
                 for x in xs:
                     self.spots.append(Spot(id=len(self.spots), kind=d.side, x=x, y=row, door=d.id))
-        for y in (7, 9, 11, 13):
-            for x in range(60, 76, 2):
+        qx0 = NORTH_ROOMS["qa"][0]
+        for y in range(by0 + 3, by0 + 10, 2):
+            for x in range(qx0 + 2, qx0 + 18, 2):
                 self.spots.append(Spot(id=len(self.spots), kind="qa", x=x, y=y))
 
-        self.chargers = [(x, y) for y in (7, 11) for x in (82, 86, 90, 94, 98)]
-        self.seats = [(x, y) for y in (7, 10, 13) for x in range(104, 110)]
+        cx0, cy0, cx1, _ = CHARGING_AREA
+        self.chargers = [(cx0 + 2 + 4 * i, y) for y in (cy0 + 2, cy0 + 6) for i in range((cx1 - cx0 - 1) // 4)]
+        bx_0, _, bx_1, _ = self.areas["break"]
+        self.seats = [(x, y) for y in range(by0 + 3, by0 + 10, 3) for x in range(bx_0 + 2, bx_1 - 1)]
         self.walkable = bytearray(1 if v == FLOOR else 0 for v in t)
 
-        self.zone_rects = {
-            "dock": [[41, 5, 57, 75], [122, 5, 138, 75], [58, 16, 121, 19], [58, 73, 121, 75],
-                     [78, 20, 79, 72], [100, 20, 101, 72], [78, 5, 101, 15]],
-            "qa": [[59, 5, 76, 14]],
-        }
-        for key, x0 in ROOM_X.items():
-            self.zone_rects[key] = [[x0 + 1, ROOM_Y0 + 1, x0 + 18, ROOM_Y1 - 1]]
+        # temperature zones: cold rooms and QA cage; every other building floor tile is the dock
+        self.zone_rects = {"qa": [[qx0 + 1, by0 + 1, NORTH_ROOMS["qa"][1] - 1, by0 + 10]]}
+        for key, (x0, y0, x1, y1) in ((k, self.areas[k]) for k in ROOM_X):
+            self.zone_rects[key] = [[x0 + 1, y0 + 1, x1 - 1, y1 - 1]]
+        self.zone_rects["dock"] = [[bx0 + 1, by0 + 12, bx1 - 1, by1 - 1],
+                                   [bx0 + 1, by0 + 1, qx0 - 1, by0 + 11],
+                                   [NORTH_ROOMS["qa"][1] + 1, by0 + 1, NORTH_ROOMS["break"][0] - 1, by0 + 11],
+                                   [NORTH_ROOMS["office"][1] + 1, by0 + 1, bx1 - 1, by0 + 11]]
         self.zone_map = {}
-        for key, rects in self.zone_rects.items():
-            for x0, y0, x1, y1 in rects:
+        for key in ("qa", *ROOM_X, "dock"):              # first match wins: rooms before the dock
+            for x0, y0, x1, y1 in self.zone_rects[key]:
                 for y in range(y0, y1 + 1):
                     for x in range(x0, x1 + 1):
-                        self.zone_map.setdefault(y * W_ + x, key)
+                        if t[y * W_ + x] != WALL:
+                            self.zone_map.setdefault(y * W_ + x, key)
+
+        # truck routes (tile coordinates): west yard for inbound, east apron for outbound
+        self.in_dock_x = bx0 - 8          # trailer centre when backed onto a receiving door
+        self.in_lane_x = bx0 - 24         # north-south lane in front of the receiving doors
+        self.in_turn_x = bx0 - 34
+        self.out_dock_x = bx1 + 8
+        self.out_lane_x = bx1 + 21
+        self.out_turn_x = bx1 + 31
 
     def zone_at(self, x: float, y: float):
         return self.zone_map.get(int(y) * self.w + int(x))
@@ -171,7 +201,7 @@ class Simulation:
         self.slots = L.slots
         self.spots = L.spots
         self.doors = L.doors
-        self.spots_by_kind = {k: [s for s in self.spots if s.kind == k] for k in ("in", "out", "qa")}
+        self.spots_by_kind = {k: [s for s in self.spots if s.kind == k] for k in ("in", "out", "qa", "drop")}
         self.slots_by_zone = {}
         for key in ROOM_X:
             entry_x = ROOM_X[key] + 2
@@ -207,12 +237,12 @@ class Simulation:
         self.last_recall = None
         self.pending_putaway = []
         self.demand_by_day = {code: {} for code in self.skus}
-        self.parking = [None] * len(C.PARKING_Y)
+        self.parking = [None] * len(C.PARKING)
         self.weather_anom = self.rng.gauss(0, 3)
         self.amb_base = self._ambient_base(0)
         self.stats = self._new_stats()
         self.cum = {"orders": 0, "on_time": 0, "ordered": 0, "shipped": 0, "lines": 0,
-                    "mispicks": 0, "comp_out": 0, "comp_total": 0}
+                    "mispicks": 0, "comp_out": 0, "comp_total": 0, "damaged_cases": 0}
         self.history = []
         self.logbook = deque(maxlen=300)
         self.chart_shipped = [0] * 24
@@ -320,7 +350,8 @@ class Simulation:
                 "picker_hours", "orders_closed", "orders_on_time", "cases_ordered_closed",
                 "cases_shipped_closed", "temp_alarms", "pallets_received", "pallets_rejected", "pallets_qa",
                 "inbound_trucks", "inbound_late", "breakdowns", "expedites", "comp_out", "comp_total",
-                "orders_received", "spoiled_cases", "sick_calls"]
+                "orders_received", "spoiled_cases", "sick_calls", "incident_cost", "injuries_lost_time",
+                "injuries_medical", "forklift_incidents", "damaged_cases"]
         return {k: 0.0 for k in keys}
 
     # ------------------------------------------------------------------ weather & demand
@@ -397,6 +428,7 @@ class Simulation:
             ct = dep - self.rng.uniform(*C.ORDER_WINDOW_H) * 3600
             self._schedule(max(self.t, ct), "order", store=s.id, key=key)
         self._schedule(max(self.t, dep - C.CUTOFF_H * 3600), "wave", key=key)
+        self._schedule(max(self.t, dep - C.OUTBOUND_YARD_BEFORE_H * 3600), "out_yard", key=key)
         self._schedule(max(self.t, dep - C.OUTBOUND_ARRIVE_BEFORE_H * 3600), "out_arrive", key=key)
 
     def _replenish(self, day):
@@ -426,12 +458,13 @@ class Simulation:
             slots = [day * DAY + h * 3600 for h in info["hours"] if day * DAY + h * 3600 >= self.t - 1800]
             if not slots:
                 slots = [self.t + 3600]
-            n = max(math.ceil(len(codes) / C.TRUCK_CAPACITY), len(codes) // C.MIN_INBOUND_PALLETS, 1)
+            cap = self.rng.randint(C.TRUCK_CAPACITY_MIN, C.TRUCK_CAPACITY)       # 28–30 pallets this time
+            n = max(math.ceil(len(codes) / cap), len(codes) // C.MIN_INBOUND_PALLETS, 1)
             n_slots = min(n, len(slots))
             for i in range(n):
                 load = codes[i::n]
                 k = i % n_slots
-                sched = slots[k * len(slots) // n_slots] + (i // n_slots) * 1800
+                sched = slots[k * len(slots) // n_slots] + (i // n_slots) * 600   # a convoy, 10 min apart
                 self._create_inbound(plant, sched, load)
 
     def _lot(self, plant, code, pack_day):
@@ -517,7 +550,7 @@ class Simulation:
             if w.state == "active" and w.shift != name:
                 w.state = "leaving"
         for w in list(self.workers.values()):
-            if w.shift != name or w.state != "off" or w.fired:
+            if w.shift != name or w.state != "off" or w.fired or w.injured_until > self.t:
                 continue
             if self.events.sick_call(self, w):
                 w.sick = True
@@ -549,6 +582,7 @@ class Simulation:
         if self.flags["temp_ticks"] % 3 == 0:
             self.chart_freezer.append(self.zones["freezer"].temp)
         self._check_excursions(C.TEMP_LOG_EVERY_MIN)
+        self._dispatch_waiting_inbound()          # new shift crews can pull trailers from the yard
         if self.pending_putaway:
             waiting, self.pending_putaway = self.pending_putaway, []
             for pid in waiting:
@@ -608,13 +642,13 @@ class Simulation:
                 self.stats["inbound_late"] += 1
             self.log("log_truck_in", "info", plant=tr.origin, truck=tid, late=int(late))
         door = next((d for d in self.doors if d.side == "in" and d.truck is None), None)
-        if door is not None:
+        if door is not None and self._receiving_capacity():
             from_park = tr.state == "parked"
             if from_park:
                 self.parking[tr.park] = None
                 tr.park = None
             else:
-                tr.x, tr.y, tr.heading = -25.0, 82.5, 0.0
+                tr.x, tr.y, tr.heading = -25.0, C.IN_LANE_Y, 0.0
             door.truck = tid
             tr.door = door.id
             tr.dest = "dock"
@@ -626,33 +660,70 @@ class Simulation:
             if k is not None:
                 self.parking[k] = tid
                 tr.park = k
-                tr.x, tr.y, tr.heading = -25.0, 82.5, 0.0
+                tr.x, tr.y, tr.heading = -25.0, C.IN_LANE_Y, 0.0
                 tr.dest, tr.state = "park", "approach"
-                py = C.PARKING_Y[k] + 0.5
-                tr.waypoints = [[20, 82.5, False], [20, py, False], [14, py, False], [31, py, True]]
+                px, py = C.PARKING[k]
+                tr.waypoints = [[px - 12, C.IN_LANE_Y, False], [px - 12, py + 0.5, False],
+                                [px + 0.5, py + 0.5, False]]
                 return
             tr.state = "queued"
+
+    def _new_out_truck(self, dep, door):
+        tid = self._nid("truck")
+        tr = Truck(id=tid, kind="out", origin=dep["route"], state="approach", door=door.id,
+                   x=C.MAP_W + 25.0, y=C.OUT_LANE_Y, heading=math.pi, sched_t=self.t, arrive_t=self.t,
+                   departure_t=dep["dep"])
+        self.trucks[tid] = tr
+        dep["truck"] = tid
+        return tr
+
+    def _ev_out_yard(self, key):
+        """The carrier drops the empty reefer trailer in the yard a few hours before departure."""
+        dep = self.departures.get(key)
+        if dep is None or dep["truck"] is not None:
+            return
+        k = next((i for i, v in enumerate(self.parking) if v is None), None)
+        if k is None:
+            return                                   # yard full: it comes straight to the door later
+        door = self.doors[len(C.RECEIVING_DOOR_Y) + C.ROUTES[dep["route"]][1]]
+        tr = self._new_out_truck(dep, door)
+        self.parking[k] = tr.id
+        tr.park, tr.dest = k, "park"
+        px, py = C.PARKING[k]
+        tr.waypoints = [[px + 12, C.OUT_LANE_Y, False], [px + 12, py + 0.5, False], [px + 0.5, py + 0.5, False]]
 
     def _ev_out_arrive(self, key):
         dep = self.departures.get(key)
         if dep is None:
             return
         door = self.doors[len(C.RECEIVING_DOOR_Y) + C.ROUTES[dep["route"]][1]]
-        if door.truck is not None:
+        tr = self.trucks.get(dep["truck"]) if dep["truck"] is not None else None
+        if door.truck is not None or (tr is not None and tr.state == "approach"):
             self._schedule(self.t + 300, "out_arrive", key=key)
             return
-        tid = self._nid("truck")
-        tr = Truck(id=tid, kind="out", origin=dep["route"], state="approach", dest="dock", door=door.id,
-                   x=205.0, y=86.5, heading=math.pi, sched_t=self.t, arrive_t=self.t, departure_t=dep["dep"])
+        L = self.layout
         y = door.y + 0.5
-        tr.waypoints = [[160, 86.5, False], [160, y, False], [170, y, False], [147, y, True]]
-        self.trucks[tid] = tr
-        door.truck = tid
-        dep["truck"] = tid
+        to_door = [[L.out_lane_x, y, False], [L.out_turn_x, y, False], [L.out_dock_x, y, True]]
+        if tr is None:                               # straight from the highway
+            tr = self._new_out_truck(dep, door)
+            tr.waypoints = [[L.out_lane_x, C.OUT_LANE_Y, False]] + to_door
+        else:                                        # pulled from the yard
+            self.parking[tr.park] = None
+            tr.park = None
+            tr.state = "approach"
+            tr.waypoints = [[tr.x - 10, tr.y, False], [tr.x - 10, C.OUT_LANE_Y, False],
+                            [L.out_lane_x, C.OUT_LANE_Y, False]] + to_door
+        tr.dest = "dock"
+        door.truck = tr.id
 
     def _ev_repair(self, fid):
         f = self.forklifts[fid]
-        f.state, f.broken_until = "idle", None
+        f.broken_until = None
+        if f.operator is None:                   # the mechanic returns it to its charger, plugged in
+            cx, cy = self.layout.chargers[f.charger]
+            f.x, f.y, f.state = cx + 0.5, cy + 0.5, "charging"
+        else:
+            f.state = "idle"
         self.log("log_repaired", "info", fid=fid)
         self.data.row("fact_equipment", ts=self.ts(), forklift_id=fid, event="repaired", battery_pct=round(f.battery, 1))
 
@@ -765,10 +836,12 @@ class Simulation:
     # ------------------------------------------------------------------ trucks
     def _wp_in_dock(self, door, from_park, tr):
         y = door.y + 0.5
-        if from_park:
-            py = tr.y
-            return [[14, py, False], [14, y, False], [4, y, False], [32, y, True]]
-        return [[20, 82.5, False], [20, y, False], [10, y, False], [32, y, True]]
+        L = self.layout
+        if from_park:                      # pull out of the yard, back onto the road, up to the door
+            return [[tr.x + 10, tr.y, False], [tr.x + 10, C.IN_LANE_Y, False], [L.in_lane_x, C.IN_LANE_Y, False],
+                    [L.in_lane_x, y, False], [L.in_turn_x, y, False], [L.in_dock_x, y, True]]
+        return [[L.in_lane_x, C.IN_LANE_Y, False], [L.in_lane_x, y, False], [L.in_turn_x, y, False],
+                [L.in_dock_x, y, True]]
 
     def _update_trucks(self, dt):
         for tr in list(self.trucks.values()):
@@ -840,16 +913,26 @@ class Simulation:
         tr.leave_t = self.t
         tr.state = "departing"
         if tr.kind == "in":
-            tr.waypoints = [[8, y, False], [8, 86.5, False], [-30, 86.5, False]]
+            tr.waypoints = [[self.layout.in_turn_x - 2, y, False], [self.layout.in_turn_x - 2, C.OUT_LANE_Y, False],
+                            [-30, C.OUT_LANE_Y, False]]
             self._dispatch_waiting_inbound()
         else:
-            tr.waypoints = [[172, y, False], [172, 82.5, False], [210, 82.5, False]]
+            tr.waypoints = [[self.layout.out_turn_x + 2, y, False], [self.layout.out_turn_x + 2, C.IN_LANE_Y, False],
+                            [C.MAP_W + 30, C.IN_LANE_Y, False]]
+
+    def _receiving_capacity(self):
+        """Drop-trailer yard rule: a trailer is pulled to a door only when a dock worker is free for it
+        (fewer trailers at the doors than receivers on shift); otherwise it waits in the yard."""
+        at_doors = sum(1 for tr in self.trucks.values()
+                       if tr.kind == "in" and (tr.state == "docked" or (tr.state == "approach" and tr.dest == "dock")))
+        crew = sum(1 for w in self.workers.values() if w.role == "receiver" and w.state == "active")
+        return at_doors < max(1, crew)
 
     def _dispatch_waiting_inbound(self):
         waiting = [tr for tr in self.trucks.values() if tr.kind == "in" and tr.state in ("parked", "queued")]
         waiting.sort(key=lambda tr: (tr.state != "parked", tr.arrive_t or 0))
         for tr in waiting:
-            if not any(d.side == "in" and d.truck is None for d in self.doors):
+            if not any(d.side == "in" and d.truck is None for d in self.doors) or not self._receiving_capacity():
                 break
             self._ev_in_arrive(tr.id)
 
@@ -1126,14 +1209,29 @@ class Simulation:
                     best = sp
         return best
 
+    def _free_drop(self, zone):
+        for sp in self.spots_by_kind["drop"]:
+            if sp.zone == zone and sp.pallet is None and sp.reserved is None:
+                return sp
+        return None
+
     def _request_putaway(self, p):
+        """Dock or QA cage -> taxi to the room's drop point; drop point -> reach truck to a rack slot."""
         zone = self.skus[p.sku].zone
         slot = self._find_slot(zone)
-        if slot is None:
+        drop = None
+        if slot is not None and p.loc == "spot" and self.spots[p.ref].kind != "drop":
+            drop = self._free_drop(zone)
+            if drop is not None:
+                drop.reserved = p.id
+                self._new_job("taxi", pallet=p.id, target=drop.id, priority=45 if zone == "freezer" else 40)
+                return
+        on_drop = p.loc == "spot" and self.spots[p.ref].kind == "drop"
+        if slot is None or not on_drop:          # room full, or every drop point busy: retry later
             if p.id not in self.pending_putaway:
                 self.pending_putaway.append(p.id)
             last = self.flags["zone_full_logged"].get(zone, -1e9)
-            if self.t - last > 3600:
+            if slot is None and self.t - last > 3600:
                 self.flags["zone_full_logged"][zone] = self.t
                 self.log("log_zone_full", "warn", zone=zone)
             return
@@ -1151,6 +1249,13 @@ class Simulation:
             if j.pallet == p.id:
                 self.open_jobs["putaway"].remove(jid)
                 self.slots[j.target].reserved_for = None
+                del self.jobs[jid]
+        for jid in list(self.open_jobs["taxi"]):
+            j = self.jobs[jid]
+            if j.pallet == p.id:
+                self.open_jobs["taxi"].remove(jid)
+                if self.spots[j.target].reserved == p.id:
+                    self.spots[j.target].reserved = None
                 del self.jobs[jid]
         for jid in self.open_jobs["move_qa"]:
             j = self.jobs[jid]
@@ -1335,6 +1440,79 @@ class Simulation:
                 low, ld = f, d
         return best or low
 
+    # ------------------------------------------------------------------ incidents (rates: config + events.py)
+    def _incident_row(self, category, kind, severity, w=None, f=None, days=0.0, cases=0, cost=0.0, x=None, y=None):
+        zone = self.layout.zone_at(x, y) if x is not None else None
+        self.data.row("fact_incidents", ts=self.ts(), incident_id=self._nid("incident"), category=category,
+                      incident_type=kind, severity=severity, worker_id=w.id if w else "",
+                      role=w.role if w else "", forklift_id=f.id if f else "", zone=zone or "",
+                      days_lost=round(days, 1), cases_damaged=cases, cost=round(cost, 2))
+
+    def injure(self, w, kind, lost_time, forklift=None):
+        """A worker is hurt: treated and sent home for the shift, or off for days (lost-time claim)."""
+        if lost_time:
+            median, sigma, cap = C.INJURY_DAYS_LOST
+            days = min(cap, max(1.0, self.rng.lognormvariate(math.log(median), sigma)))
+            w.injured_until = self.t + days * DAY
+            hours_paid = days * 5 / 7 * 8                           # working days off
+            cost = hours_paid * C.WAGES[w.role] * C.INJURY_INDEMNITY_SHARE
+            self.stats["injuries_lost_time"] += 1
+        else:
+            days = 0.0
+            w.injured_until = self.t + 8 * 3600                    # home for the rest of the shift
+            cost = 150.0                                           # first aid / clinic visit
+            self.stats["injuries_medical"] += 1
+        self._cost("incident_cost", cost)
+        if w.state == "active":
+            w.state = "leaving"
+        self._incident_row("injury", kind, "lost_time" if lost_time else "medical_aid", w=w, f=forklift,
+                           days=days, cost=cost, x=w.x, y=w.y)
+        self.log("ev_injury", "bad", name=w.name, kind=kind, days=round(days))
+        self.fx_text(w.x, w.y, "fx_injury", "bad")
+
+    def forklift_accident(self, f, kind, injury):
+        """Collision or tip-over (injury), or property damage only (rack strike, dropped pallet, damage)."""
+        self.stats["forklift_incidents"] += 1
+        op = self.workers.get(f.operator) if f.operator is not None else None
+        if injury:
+            victim = op
+            if kind == "pedestrian_struck":
+                walkers = [w for w in self.workers.values() if w.state == "active" and w.forklift is None]
+                if walkers:
+                    victim = min(walkers, key=lambda w: abs(w.x - f.x) + abs(w.y - f.y))
+            if victim is not None:
+                self.injure(victim, kind, lost_time=True, forklift=f)
+            self.break_forklift(f.id)
+            return
+        cases, cost = 0, 0.0
+        if kind == "dropped_pallet" and f.carrying in self.pallets and not self.pallets[f.carrying].mixed:
+            p = self.pallets[f.carrying]
+            cases = max(1, min(p.cases - 1, round(p.cases * self.rng.uniform(*C.DROPPED_PALLET_LOSS))))
+            p.cases -= cases
+            cost = cases * self.skus[p.sku].value
+            self.stats["damaged_cases"] += cases
+            self.cum["damaged_cases"] = self.cum.get("damaged_cases", 0) + cases
+        elif kind == "equipment_damage" or kind == "dropped_pallet":
+            kind = "equipment_damage"
+            self.break_forklift(f.id)
+        else:                                                      # rack strike: the nearest bay is closed
+            bay = min(self.slots, key=lambda sl: abs(sl.x - f.x) + abs(sl.y - f.y))
+            hours = self.rng.uniform(*C.RACK_REPAIR_HOURS)
+            for sl in self.slots:
+                if sl.x == bay.x and sl.y == bay.y and sl.pallet is None and sl.reserved_for is None:
+                    sl.reserved_for = -1                           # blocked until repaired
+            self._schedule(self.t + hours * 3600, "rack_repaired", x=bay.x, y=bay.y)
+            cost = C.RACK_REPAIR_COST
+        self._cost("incident_cost", cost)
+        self._incident_row("forklift", kind, "property_damage", w=op, f=f, cases=cases, cost=cost, x=f.x, y=f.y)
+        self.log("ev_forklift", "event", fid=f.id, kind=kind)
+        self.fx_text(f.x, f.y, "fx_forklift", "warn")
+
+    def _ev_rack_repaired(self, x, y):
+        for sl in self.slots:
+            if sl.x == x and sl.y == y and sl.reserved_for == -1:
+                sl.reserved_for = None
+
     # ------------------------------------------------------------------ staff
     def _hire(self, role, shift, announce=True):
         wid = self._nid("worker")
@@ -1372,7 +1550,7 @@ class Simulation:
     def _spawn(self, w, at_idle=False):
         w.state, w.task = "active", ""
         w.steps, w.path, w.job = [], [], None
-        w.carrying, w.jack_load, w.forklift = None, [], None
+        w.carrying, w.jack_load, w.forklift, w.cargo = None, [], None, []
         if at_idle:
             x, y = self._idle_tile(w)
         else:
@@ -1438,7 +1616,13 @@ class Simulation:
             return
         if not w.break_done and self.t >= w.break_at:
             seat = self.layout.seats[w.id % len(self.layout.seats)]
-            steps = [D("park_here")] if w.forklift is not None else []
+            steps = []
+            if w.forklift is not None:
+                f = self.forklifts[w.forklift]
+                if f.battery < C.BATTERY_MIN_TO_TAKE:          # plug it in over the break
+                    steps = [G(*self.layout.chargers[f.charger]), D("plug")]
+                else:
+                    steps = [D("park_here")]
             steps += [G(*seat), W(C.MEAL_BREAK_S, "break"), D("end_break")]
             self._set_task(w, "break", steps)
             return
@@ -1482,8 +1666,27 @@ class Simulation:
                     self.open_jobs[job.kind].remove(jid)
                     job.worker = w.id
                     job.start_t = self.t
+                    if job.kind == "taxi":
+                        self._pair_taxi(w, job)
                     return job
         return None
+
+    def _pair_taxi(self, w, job):
+        """Fill the rider jack: add up to TAXI_PALLETS-1 more pallets going to the same room,
+        nearest to the first one."""
+        zone = self.spots[job.target].zone
+        p0 = self.pallets[job.pallet]
+        cands = []
+        for jid in self.open_jobs["taxi"]:
+            j2 = self.jobs[jid]
+            if self.spots[j2.target].zone == zone:
+                p = self.pallets[j2.pallet]
+                cands.append((abs(p.x - p0.x) + abs(p.y - p0.y), jid))
+        for _, jid in sorted(cands)[:C.TAXI_PALLETS - 1]:
+            self.open_jobs["taxi"].remove(jid)
+            self.jobs[jid].worker = w.id
+            self.jobs[jid].start_t = self.t
+            job.picks.append(jid)
 
     def _can_start(self, job):
         k = job.kind
@@ -1491,6 +1694,11 @@ class Simulation:
             tr = self.trucks.get(job.truck)
             if tr is None or tr.state != "docked" or self.doors[tr.door].open < 0.9:
                 return False
+            if k == "unload" and self.t < (tr.dock_t or 0) + C.DOCK_CHECKIN_S:
+                return False                       # still checking in (paperwork, seal, first probe)
+            if k == "unload" and any(j.kind == "unload" and j.truck == tr.id and j.worker is not None
+                                     for j in self.jobs.values()):
+                return False                       # one dock worker per trailer
             if k == "unload":
                 sp = self._free_spot("in", tr.door)
                 if sp is None:
@@ -1498,6 +1706,10 @@ class Simulation:
                 sp.reserved = job.pallet
                 job.target = sp.id
             return True
+        if k == "taxi" and self.t - job.created_t < C.TAXI_MAX_WAIT_S:
+            zone = self.spots[job.target].zone      # wait for a full load (2 pallets) unless it has waited long
+            same = sum(1 for jid in self.open_jobs["taxi"] if self.spots[self.jobs[jid].target].zone == zone)
+            return same >= C.TAXI_PALLETS
         if k == "move_qa" and job.target is None:
             sp = self._free_spot("qa")
             if sp is None:
@@ -1528,6 +1740,16 @@ class Simulation:
         if k == "unload":
             d = self.doors[self.trucks[job.truck].door]
             return [G(d.x + 1, d.y), W(C.UNLOAD_SCAN_S, "scan"), D("receive_check", j=job.id)]
+        if k == "taxi":
+            legs = [job] + [self.jobs[j2] for j2 in job.picks]
+            steps = []
+            for jb in legs:
+                p = self.pallets[jb.pallet]
+                steps += [G(int(p.x), int(p.y)), W(C.DROP_S, "engage"), D("taxi_load", j=jb.id)]
+            for jb in legs:
+                sp = self.spots[jb.target]
+                steps += [G(sp.x, sp.y), W(C.DROP_S, "drop"), D("taxi_drop", j=jb.id)]
+            return steps
         if k in ("putaway", "move_qa"):
             p = self.pallets[job.pallet]
             if p.loc == "slot":
@@ -1574,6 +1796,9 @@ class Simulation:
             sp = self.spots[job.target]
             if sp.reserved == job.pallet:
                 sp.reserved = None
+        if job and job.kind == "taxi":
+            for j2 in job.picks:
+                self.jobs.pop(j2, None)
 
     def _abort_job(self, w):
         job = self.jobs.get(w.job) if w.job is not None else None
@@ -1631,6 +1856,8 @@ class Simulation:
     def _move(self, w, ent, budget):
         if w.forklift is not None:
             speed = C.REACH_SPEED if ent.kind == "reach" else C.FORKLIFT_SPEED
+        elif w.role == "taxi":
+            speed = C.TAXI_SPEED * (0.85 + 0.15 * w.skill)
         else:
             loaded = w.carrying is not None or w.jack_load or (w.role == "picker" and w.task == "job")
             speed = (C.JACK_SPEED if loaded else C.WALK_SPEED) * (0.85 + 0.15 * w.skill)
@@ -1799,6 +2026,36 @@ class Simulation:
             self._request_putaway(p)
         else:
             self._new_job("move_qa", pallet=p.id, reason="qa", priority=45)
+        return True
+
+    def _do_taxi_load(self, w, j):
+        job = self.jobs.get(j)
+        p = self.pallets.get(job.pallet) if job else None
+        if p is None or p.loc != "spot" or p.status != "received":     # moved, recalled or gone meanwhile
+            if job and self.spots[job.target].reserved == job.pallet:
+                self.spots[job.target].reserved = None
+            return True
+        sp = self.spots[p.ref]
+        if sp.pallet == p.id:
+            sp.pallet = None
+        p.loc, p.ref = "worker", w.id
+        w.cargo.append(p.id)
+        return True
+
+    def _do_taxi_drop(self, w, j):
+        job = self.jobs.get(j)
+        if job is None or job.pallet not in w.cargo:
+            return True
+        p = self.pallets[job.pallet]
+        sp = self.spots[job.target]
+        sp.pallet, sp.reserved = p.id, None
+        p.loc, p.ref = "spot", sp.id
+        p.x, p.y = sp.x + 0.5, sp.y + 0.5
+        w.cargo.remove(p.id)
+        if p.recalled and self.recall and self.recall["pulling"]:
+            self._send_to_qa(p, "recall")
+        else:
+            self._request_putaway(p)                 # reach truck takes it up into the rack
         return True
 
     def _do_lift(self, w, j):
@@ -2057,7 +2314,7 @@ class Simulation:
     def _close_day(self, day):
         s = self.stats
         cost_keys = ["wages", "energy", "spoilage", "penalties", "rejected_cost", "expedite_cost",
-                     "repair_cost", "fixed_cost"]
+                     "repair_cost", "incident_cost", "fixed_cost"]
         costs = sum(s[k] for k in cost_keys)
         summary = {
             "day": day, "date": self.day_str(day),
@@ -2075,6 +2332,8 @@ class Simulation:
             "inbound_trucks": int(s["inbound_trucks"]), "inbound_late": int(s["inbound_late"]),
             "breakdowns": int(s["breakdowns"]), "expedites": int(s["expedites"]),
             "spoiled_cases": int(s["spoiled_cases"]), "sick_calls": int(s["sick_calls"]),
+            "injuries_lost_time": int(s["injuries_lost_time"]), "injuries_medical": int(s["injuries_medical"]),
+            "forklift_incidents": int(s["forklift_incidents"]), "damaged_cases": int(s["damaged_cases"]),
             "cash": self.money,
         }
         self.history.append(summary)
@@ -2130,7 +2389,8 @@ class Simulation:
             "cases_shipped": int(s["cases_shipped"]),
             "profit_today": s["revenue"] - sum(s[k] for k in ("wages", "energy", "spoilage", "penalties",
                                                                 "rejected_cost", "expedite_cost",
-                                                                "repair_cost", "fixed_cost")),
+                                                                "repair_cost", "incident_cost",
+                                                                "fixed_cost")),
             "fill": fill,
             "open_orders": sum(1 for o in self.orders.values() if o.status != "closed"),
             "open_jobs": {k: len(v) for k, v in self.open_jobs.items()},
