@@ -40,6 +40,7 @@ def parse_args(argv=None):
     ap.add_argument("--seed", type=int, default=C.RANDOM_SEED)
     ap.add_argument("--scenario", default="baseline", help=f"one of: {', '.join(C.SCENARIOS)}")
     ap.add_argument("--lang", default="fr", choices=i18n.LANGS)
+    ap.add_argument("--start", default=None, metavar="YYYY-MM-DD", help="first simulated day (default config.START_DATE)")
     ap.add_argument("--out", default=None, help="headless output folder (default data/<scenario>_seed<seed>)")
     rec = ap.add_argument_group("video recording")
     rec.add_argument("--record", metavar="FILE.mp4", help="render offscreen to a video instead of opening a window")
@@ -258,6 +259,8 @@ def main(argv=None):
     args = parse_args(argv)
     i18n.set_lang(args.lang)
     C.apply_scenario(args.scenario)
+    if args.start:
+        C.START_DATE = tuple(int(x) for x in args.start.split("-"))
     if args.headless:
         run_headless(args)
     elif args.record:

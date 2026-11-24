@@ -128,6 +128,24 @@ streamlit run dashboard/app.py
 
 ![Dashboard: scenario comparison](docs/dashboard_scenarios.png)
 
+## Machine learning
+
+```bash
+python ml/train_all.py      # all five models in about 10 s; results in ml/RESULTS.md, cards in ml/README.md
+```
+
+Each model is tested on the last 60 days (never seen in training) against the method a distribution
+center uses today. **[ml/README.md](ml/README.md)** has a model card for each (decision, features, leakage
+checks, $ assumptions, limits), and **[ml/RESULTS.md](ml/RESULTS.md)** holds the generated numbers.
+
+| Model | Result vs today's method | Value / day |
+|---|---|---|
+| Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week) | $2,881 (conservative) |
+| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 88 cases per picker-hour) plus the forecast: 301 picker-hours a day instead of 349 | $979 |
+| Late-order risk | Catches 53 % of late orders at 34 % precision (largest-orders rule: 4 %); top drivers are picker load and pickers present, the true mechanism | $180 |
+| Cold-room early warning | Warns 28 min before a breach vs 13 min for a fixed pre-alarm, with fewer alerts | not monetised |
+| Spoilage risk | **A simple rule wins** ("fewer than 3 days left at receipt" is 99 % precise). The fix is upstream: every spoiled pallet comes from an aged load, mostly from the poultry plant. | rule recommended |
+
 ## Record videos
 
 ```bash
@@ -160,8 +178,9 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 - [x] Data dictionary, SQLite star schema and KPI SQL queries
 - [x] Realistic supply problems: short shipments, aged loads, buyer order error (spoilage ≈ 0.5 %, fill rate ≈ 99.4 %)
 - [x] Dashboards: Power BI export, guide and theme, plus a Streamlit mirror (operations, cold chain, inventory, labour, suppliers & yard, safety, recall trace, scenarios)
-- [ ] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk, late-shipment risk, temperature anomaly detection
+- [x] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk (a rule wins), late-order risk, cold-room early warning
+- [ ] Closed-loop test: run the simulation with the ML labour plan and measure the real savings
 
 ## Tech
 
-Python 3.11+, pygame-ce. The analytics layer will add pandas, scikit-learn and Jupyter.
+Python 3.11+, pygame-ce. The analytics layer uses pandas, scikit-learn, Streamlit and Plotly.
