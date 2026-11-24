@@ -32,5 +32,5 @@
   title;
 %mend trace;
 
-/* example: replace with a lot number from ITHTRN, e.g. a recalled lot (fact_events ev_recall) */
-%trace(lot=4513);
+/* example: lot 4847 (breakfast sausages T303), recalled on 2027-01-01 in the baseline run (seed 42) */
+%trace(lot=4847);
