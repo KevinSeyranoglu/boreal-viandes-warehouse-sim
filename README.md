@@ -3,6 +3,8 @@
 [![tests](https://github.com/KevinSeyranoglu/boreal-viandes-warehouse-sim/actions/workflows/tests.yml/badge.svg)](https://github.com/KevinSeyranoglu/boreal-viandes-warehouse-sim/actions/workflows/tests.yml)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
 
+**Short on time? Read the 2-page case study: [English](docs/CASE_STUDY.md) · [Français](docs/ETUDE_DE_CAS.md)**
+
 A simulated refrigerated meat **distribution center** in Québec. It produces the data a warehouse
 analyst works with: WMS scans, orders, picks, labour, yard, temperatures and incidents. On top of it
 is the full analytics stack: **SQL, DuckDB, Power BI, Streamlit, an AS/400 extract read by SAS, and
