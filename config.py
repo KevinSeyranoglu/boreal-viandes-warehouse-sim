@@ -13,6 +13,7 @@ TILE_PX = 16
 ZOOM_MIN = 0.25
 ZOOM_MAX = 3.0
 CAMERA_PAN_SPEED = 900          # screen pixels per real second (arrow keys)
+CAMERA_ZOOM_RATE = 2.5          # zoom factor per real second while +/- (or Page Up/Down) is held
 
 COMPANY_NAME = "Boréal Viandes – Centre de distribution"
 SAVE_FILE = "savegame.json"

@@ -161,6 +161,12 @@ class Game:
         dy = (keys[pg.K_UP] - keys[pg.K_DOWN]) * step
         if dx or dy:
             self.renderer.cam.pan(dx, dy)
+        zoom_in = keys[pg.K_PLUS] or keys[pg.K_EQUALS] or keys[pg.K_KP_PLUS] or keys[pg.K_PAGEUP]
+        zoom_out = keys[pg.K_MINUS] or keys[pg.K_KP_MINUS] or keys[pg.K_PAGEDOWN]
+        if zoom_in != zoom_out:              # held: smooth zoom on the centre of the view
+            view = self.renderer.view
+            self.renderer.cam.zoom_at(C.CAMERA_ZOOM_RATE ** (real_dt if zoom_in else -real_dt),
+                                      view.centerx, view.centery)
         if self.notice:
             self.notice[1] += real_dt
         if self.paused:

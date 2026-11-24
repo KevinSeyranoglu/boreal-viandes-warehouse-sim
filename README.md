@@ -47,7 +47,7 @@ python main.py
 | Space | Pause |
 | 1 – 5 | Speed 1x / 2x / 5x / 10x / 20x |
 | Arrows or drag | Pan |
-| Mouse wheel | Zoom |
+| Mouse wheel, or + / − (also keypad, Page Up / Page Down) | Zoom (hold the key for a smooth zoom) |
 | Home | Recenter |
 | L | Français ↔ English |
 | F5 / F9 | Save / load |
