@@ -159,6 +159,8 @@ class Simulation:
         self.nav = NavGrid(L.w, L.h, L.walkable)
         self.data = datalog or NullLog()
         self.skus = {row[0]: SKU(*row) for row in C.SKUS}
+        for sku in self.skus.values():
+            sku.base_demand *= C.DEMAND_SCALE
         self.stores = {row[0]: Store(*row) for row in C.STORES}
         size_sum = sum(s.size for s in self.stores.values())
         self.store_share = {k: s.size / size_sum for k, s in self.stores.items()}
@@ -1151,6 +1153,8 @@ class Simulation:
         if any(j.pallet == p.id and j.worker is not None for j in self.jobs.values()):
             return   # already being carried; handled when it lands
         p.status = {"excursion": "qa_hold", "spoiled": "spoiled", "recall": "recalled"}.get(reason, "qa_hold")
+        if reason == "excursion":
+            p.qa_reason = "excursion"
         prio = {"recall": 80, "excursion": 60, "spoiled": 20}.get(reason, 45)
         self._new_job("move_qa", pallet=p.id, reason=reason, priority=prio)
 
@@ -1742,7 +1746,7 @@ class Simulation:
                       decision=decision, received_ts=self.ts(), receiver_id=w.id)
         if decision == "reject":
             p.status = "rejected"
-            self._cost("rejected_cost", p.cases * sku.value * C.REJECTED_LOAD_COST_SHARE)
+            self._cost("rejected_cost", C.REJECT_HANDLING_COST)    # refused at the door: supplier's loss
             self.stats["pallets_rejected"] += 1
             self.fx_text(door.x + 2, door.y, "fx_rejected", "bad", lot=p.lot)
             self.log("log_rejected", "bad", lot=p.lot, sku=p.sku, temp=p.temp_c)
@@ -1752,6 +1756,7 @@ class Simulation:
         tr.__dict__["_unloaded"] = tr.__dict__.get("_unloaded", 0) + 1
         if decision == "qa":
             p.status = "qa_hold"
+            p.qa_reason = "inbound"
             self.stats["pallets_qa"] += 1
             self.fx_text(door.x + 2, door.y, "fx_qa_hold", "warn", lot=p.lot)
             self.log("log_qa_hold", "warn", lot=p.lot, sku=p.sku, temp=p.temp_c)
@@ -1888,7 +1893,10 @@ class Simulation:
                 self._request_putaway(p)
         else:
             p.status = "rejected"
-            self._cost("rejected_cost", p.cases * sku.value * C.REJECTED_LOAD_COST_SHARE)
+            if p.qa_reason == "inbound":       # arrived warm: claimed back from the supplier
+                self._cost("rejected_cost", C.REJECT_HANDLING_COST)
+            else:                              # went out of spec in our building: our loss
+                self._cost("rejected_cost", p.cases * sku.value * C.REJECTED_LOAD_COST_SHARE)
             self.stats["pallets_rejected"] += 1
             self.fx_text(p.x, p.y, "fx_rejected", "bad", lot=p.lot)
             self.log("log_rejected", "bad", lot=p.lot, sku=p.sku, temp=p.temp_c)

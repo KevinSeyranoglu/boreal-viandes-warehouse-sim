@@ -65,7 +65,25 @@ data, and 60 simulated days take about 11 seconds.
   `fact_temperature`, `fact_energy_daily`, `fact_weather`, `fact_labor`, `fact_equipment`,
   `fact_events`, `fact_daily_kpi`
 
-Scenarios for what-if comparisons: `baseline`, `lean_staff`, `extra_pickers`, `summer_bbq`, `chaos`.
+Scenarios for what-if comparisons (60 simulated days, seed 42):
+
+| Scenario | On-time | Expedited orders | Profit / day | Picker utilisation |
+|---|---|---|---|---|
+| `baseline` | 97.6 % | 5 | $4,655 | 44 % |
+| `lean_staff` (fewer pickers and drivers) | 94.1 % | 13 | $3,339 | 53 % |
+| `extra_pickers` | 100 % | 0 | $3,543 | 30 % |
+| `chaos` (5x more incidents) | 95.2 % | 8 | $2,768 | 48 % |
+| `summer_bbq` (June start, BBQ peak) | 96.3 % | 7 | $5,783 | 50 % |
+
+Cutting staff saves wages but costs more in late-delivery penalties and expedites. Adding pickers
+buys perfect service at a higher cost. This is the trade-off the labour-planning model will optimise.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
+```
 
 ## Record videos
 
@@ -94,8 +112,8 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 ## Roadmap
 
 - [x] Simulation core, animated game, headless data export, video recording
-- [ ] Tests (case conservation: received = in stock + shipped + spoiled + rejected)
-- [ ] Economy and realism tuning, so staffing and events visibly move service levels
+- [x] Tests: case conservation, reproducibility, no-deadlock regressions, save/load, staffing signal
+- [x] Economy and realism calibration: staffing and events move service levels (table below)
 - [ ] Data dictionary for every table and column
 - [ ] Power BI dashboards: operations, cold chain, inventory and expiry, labour, recall trace, scenario comparison
 - [ ] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk, late-shipment risk, temperature anomaly detection

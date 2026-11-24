@@ -55,13 +55,13 @@ CORNER_SLOW_FACTOR = 0.5
 DOOR_OPEN_SECONDS = 20.0           # dock door roll-up time
 
 # ------------------------------------------------------------------ task durations (sim-seconds)
-UNLOAD_SCAN_S = 35                 # scan + probe the pallet temperature
+UNLOAD_SCAN_S = 90                 # scan, probe the pallet temperature, label
 DROP_S = 10
 FORK_ENGAGE_S = 8
 FORK_LIFT_S = 6
 FORK_LIFT_PER_LEVEL_S = 10
 REACH_LIFT_FACTOR = 0.7            # reach trucks lift faster
-PICK_CASE_S = 11
+PICK_CASE_S = 18                   # catch-weight: scan each case label (≈100 cases/h with travel)
 PICK_LINE_S = 20
 WRAP_S = 90                        # stretch-wrap + label
 LOAD_S = 40
@@ -83,10 +83,10 @@ FORKLIFT_REPAIR_COST = 450.0
 # ------------------------------------------------------------------ staff
 SHIFTS = {"day": (6, 14), "evening": (14, 22), "night": (22, 6)}
 ROLES = ["receiver", "forklift", "picker", "loader", "qa"]
-HEADCOUNT = {
-    "day":     {"receiver": 3, "forklift": 3, "picker": 5, "loader": 2, "qa": 1},
-    "evening": {"receiver": 2, "forklift": 3, "picker": 6, "loader": 2, "qa": 1},
-    "night":   {"receiver": 1, "forklift": 2, "picker": 4, "loader": 1, "qa": 0},
+HEADCOUNT = {     # calibrated so pickers run ~50 % busy and on-time ≈ 96 % (see SCENARIOS)
+    "day":     {"receiver": 2, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
+    "evening": {"receiver": 1, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
+    "night":   {"receiver": 1, "forklift": 1, "picker": 2, "loader": 1, "qa": 0},
 }
 WAGES = {"receiver": 26.5, "forklift": 28.0, "picker": 25.0, "loader": 25.0, "qa": 31.0}
 SHIFT_PREMIUM = {"day": 1.0, "evening": 1.05, "night": 1.12}
@@ -202,7 +202,7 @@ STORES = [
 # route id -> departure hour, shipping door index (0..5)
 ROUTES = {"R1": (5, 0), "R2": (8, 1), "R3": (11, 2), "R4": (14, 3), "R5": (17, 4), "R6": (20, 5)}
 ORDER_WINDOW_H = (8, 14)           # orders arrive 14 h to 8 h before departure
-CUTOFF_H = 8                       # wave released (allocated + picked) 8 h before departure
+CUTOFF_H = 4                       # wave released (allocated + picked) 4 h before departure
 OUTBOUND_ARRIVE_BEFORE_H = 2.0
 LOAD_RELAX_MIN = 30                # in the last 30 min, load in any order
 DEPARTURE_GRACE_MIN = 15           # still "on time" up to 15 min late
@@ -213,6 +213,7 @@ KIND_MIX = {                       # demand multiplier by store kind and categor
     "club":       {"pork": 0.9, "poultry": 0.9, "processed": 1.0, "frozen": 1.6},
     "restaurant": {"pork": 1.6, "poultry": 1.4, "processed": 0.7, "frozen": 0.5},
 }
+DEMAND_SCALE = 1.3                 # multiplies every SKU's base demand (network volume)
 WEEKDAY_FACTOR = [1.0, 0.95, 1.0, 1.15, 1.2, 0.85, 0.6]   # Monday..Sunday
 DEMAND_CV = 0.35
 LINE_SKIP_PROB = 0.08
@@ -235,7 +236,8 @@ SHORT_PENALTY_PER_CASE = 12.0
 MISPICK_PENALTY = 35.0
 EXPEDITE_COST = 380.0
 FIXED_DAILY_COST = 9_000.0         # rent, maintenance, admin
-REJECTED_LOAD_COST_SHARE = 1.0     # share of product value lost on rejected pallets
+REJECTED_LOAD_COST_SHARE = 1.0     # share of product value lost on pallets WE let go out of spec
+REJECT_HANDLING_COST = 45.0        # $ per pallet refused at the door / failed inbound QA (supplier credits the product)
 COMPLIANCE_TARGET = 0.98
 
 # ------------------------------------------------------------------ random events (expected per day)
@@ -259,14 +261,14 @@ TEMP_LOG_EVERY_MIN = 5
 # ------------------------------------------------------------------ scenarios (python main.py --scenario NAME)
 SCENARIOS = {
     "baseline": {},
-    "lean_staff": {"HEADCOUNT": {
-        "day":     {"receiver": 2, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
-        "evening": {"receiver": 2, "forklift": 2, "picker": 4, "loader": 1, "qa": 1},
+    "lean_staff": {"HEADCOUNT": {      # one picker fewer on day/evening, one forklift fewer
+        "day":     {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 1},
+        "evening": {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 1},
+        "night":   {"receiver": 1, "forklift": 1, "picker": 2, "loader": 1, "qa": 0}}},
+    "extra_pickers": {"HEADCOUNT": {   # +2 pickers day/evening, +1 night
+        "day":     {"receiver": 2, "forklift": 2, "picker": 6, "loader": 1, "qa": 1},
+        "evening": {"receiver": 1, "forklift": 2, "picker": 6, "loader": 1, "qa": 1},
         "night":   {"receiver": 1, "forklift": 1, "picker": 3, "loader": 1, "qa": 0}}},
-    "extra_pickers": {"HEADCOUNT": {
-        "day":     {"receiver": 3, "forklift": 3, "picker": 7, "loader": 2, "qa": 1},
-        "evening": {"receiver": 2, "forklift": 3, "picker": 8, "loader": 2, "qa": 1},
-        "night":   {"receiver": 1, "forklift": 2, "picker": 5, "loader": 1, "qa": 0}}},
     "summer_bbq": {"START_DATE": (2026, 6, 15)},
     "chaos": {"EVENT_RATES": {"late_truck": 4.0, "reefer_failure": 1.5, "freezer_door": 1.0,
                               "forklift_breakdown": 1.5, "rush_order": 1.5, "recall": 0.3}},

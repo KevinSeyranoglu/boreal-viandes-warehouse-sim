@@ -61,6 +61,7 @@ class Pallet:
     reserved: int = 0         # cases promised to pick jobs
     weight_kg: float = 0.0
     excursion_min: float = 0.0
+    qa_reason: str = ""       # why it went to QA: inbound (supplier's liability) / excursion (ours)
     recalled: bool = False
     mixed: bool = False
     store: str | None = None
