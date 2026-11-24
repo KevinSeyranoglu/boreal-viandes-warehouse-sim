@@ -17,11 +17,12 @@ scenario is compared with the baseline run of the same seed, with a 95 % interva
 
 | Question a DC manager asks | Answer from the data |
 |---|---|
-| Should we cut pickers to save wages? | **No.** Lean staffing saves $1,163 a day in wages but pays $3,283 more in late fines and expedites: **−$2,624 a day** (−$4,174 to −$1,073), worse with all 5 seeds. |
-| Should we add pickers instead? | **Not as a fixed crew.** On-time reaches 100 %, but $2,015 a day of wages buys only $754 of fines avoided. Profit is higher with 1 seed of 5 (−$940 a day on average). A single run (seed 42) said the opposite. |
-| How many pickers do we need tomorrow? | A demand forecast (store × SKU error **36.8 % vs 51.9 %** for "same weekday last week") plus a capacity curve learned from the data gives a crew plan worth **$1,250 ± 89 a day** on held-out days. |
-| Can one dock wall both receive and ship? | **Yes.** 14 shared doors on one wall (instead of 6 + 14 on two walls, in a 6 % narrower building) change on-time, yard wait and dock-to-stock by less than the run-to-run noise. Receiving happens overnight and each door is only needed for loading in the 2 hours before its route leaves. |
-| Which pallets will spoil? | **A one-line rule beats the ML model** with every seed ("fewer than 3 days of shelf life at receipt"). Every spoiled pallet traces to an aged load, 98 % of them poultry: the fix is a supplier contract clause, not a model. |
+| Should we cut pickers to save wages? | **No.** Lean staffing saves $1,210 a day in wages but pays $3,096 more in late fines and expedites: **−$3,209 a day** (−$4,705 to −$1,713), worse with all 5 seeds. |
+| Should we add pickers instead? | **Not as a fixed crew.** On-time rises to 99.6 %, but $1,977 a day of wages buys only $526 of fines avoided. Profit is higher with 1 seed of 5 (−$2,815 a day on average). A single run (seed 42) said the opposite. |
+| How many pickers do we need tomorrow? | A demand forecast (store × SKU error **37.1 % vs 52.4 %** for "same weekday last week") plus a capacity curve learned from the data gives a crew plan worth **$815 ± 119 a day** on held-out days. |
+| One worker owns each trailer: what does it take? | Loading alone, the owner needs 22 min after the last pallet is staged instead of 3 min with whoever is free, and on-time fell 3–4 points. **Releasing waves 5 h before departure instead of 4 restored it at no cost**; adding loaders recovered less for about $1,000 a day. |
+| Can one dock wall both receive and ship? | **Yes, with a longer yard wait.** 14 shared doors on one wall (instead of 6 + 14 on two walls, in a 6 % narrower building) keep on-time and dock-to-stock within the noise; trailers wait **8 minutes longer** at the gate (+6.5 to +10.0). |
+| Which pallets will spoil? | **A one-line rule beats the ML model** with every seed ("fewer than 3 days of shelf life at receipt"). Every spoiled pallet traces to an aged poultry load: the fix is a supplier contract clause, not a model. |
 
 ## How it fits together
 
@@ -131,18 +132,19 @@ and a recall summary.
 `analytics/sql/` holds the nine queries a distribution-center manager asks for: daily OTIF,
 service by customer, cold-chain compliance, expiry risk, picker productivity, supplier scorecard,
 recall trace, scenario comparison and spoilage drivers. For example, the supplier scorecard and the
-spoilage-drivers query show that **every spoiled pallet came from an aged load (98 % of them poultry)**,
+spoilage-drivers query show that **every spoiled pallet came from an aged poultry load**,
 which arrived with less than 3 days of shelf life left.
 
 Scenarios for what-if comparisons (180 simulated days, seed 42, from `analytics/sql/08_scenario_comparison.sql`):
 
 | Scenario | On-time | Fill rate | Wages / day | Late fines and expedites / day | Profit / day |
 |---|---|---|---|---|---|
-| `baseline` | 98.8 % | 99.62 % | $16,330 | $2,248 | $2,534 |
-| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 93.0 % | 99.76 % | $15,241 | $5,810 | $259 |
-| `extra_pickers` (+4 pickers per shift) | 100.0 % | 99.85 % | $18,418 | $628 | $2,849 |
-| `chaos` (3x more incidents and accidents) | 98.9 % | 99.22 % | $16,339 | $3,559 | -$1,272 |
-| `summer_bbq` (June start, BBQ peak) | 98.6 % | 99.59 % | $16,376 | $2,677 | $9,004 |
+| `baseline` | 98.4 % | 99.71 % | $16,394 | $2,422 | $196 |
+| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 93.2 % | 99.77 % | $15,195 | $6,062 | -$4,808 |
+| `extra_pickers` (+4 pickers per shift) | 99.5 % | 99.63 % | $18,398 | $1,791 | $720 |
+| `chaos` (3x more incidents and accidents) | 97.5 % | 99.33 % | $16,439 | $4,484 | -$4,804 |
+| `summer_bbq` (June start, BBQ peak) | 96.6 % | 99.71 % | $16,386 | $4,261 | -$4,162 |
+| `shared_dock` (every door receives and ships) | 99.2 % | 99.64 % | $16,387 | $1,971 | $1,044 |
 
 One run is one draw, so every scenario was rerun with five seeds (7, 11, 23, 42, 99) and compared with
 the baseline run of the same seed. Weather, plant delays and order noise are then shared and cancel out.
@@ -151,16 +153,36 @@ The full tables, with ± sd for every KPI and the per-seed ML results, are in
 
 | vs baseline, per day (5 seeds) | Wages | Late fines and expedites | Profit (95 % interval) | Profit higher in |
 |---|---|---|---|---|
-| `lean_staff` | −$1,163 | +$3,283 | **−$2,624** (−$4,174 to −$1,073) | 0 of 5 seeds |
-| `extra_pickers` | +$2,015 | −$754 | −$940 (−$2,512 to +$633) | 1 of 5 seeds |
+| `lean_staff` | −$1,210 | +$3,096 | **−$3,209** (−$4,705 to −$1,713) | 0 of 5 seeds |
+| `extra_pickers` | +$1,977 | −$526 | −$2,815 (−$6,664 to +$1,034) | 1 of 5 seeds |
 
-**Solid finding:** lean staffing loses money with every seed. It saves $1,163 a day in wages but costs
-$3,283 more in late-delivery fines (3 % of the order value, as in retailer OTIF programs) and expedites.
-**Seed 42 was the exception:** it is the only seed where extra pickers made more profit. Over five seeds
-they cost $2,015 more in wages and save only $754 in fines, a net cost of about $1,260 a day, so the
-baseline crew is the better fixed crew. Profit itself swings by ±$1,178 a day between seeds, which is
-why one run could not decide. The labour-planning model goes further: it varies the crew by day
+**Solid finding:** lean staffing loses money with every seed. It saves $1,210 a day in wages but costs
+$3,096 more in late-delivery fines (3 % of the order value, as in retailer OTIF programs) and expedites.
+**Seed 42 is the exception:** it is the only seed where extra pickers made more profit. Over five seeds
+they cost $1,977 more in wages and save only $526 in fines, a net cost of about $1,450 a day, so the
+baseline crew is the better fixed crew. Profit itself swings by ±$1,632 a day between seeds (seed 42's
+baseline makes only $196 a day), which is why one run could not decide. The labour-planning model goes further: it varies the crew by day
 instead of choosing one fixed size.
+
+### One worker owns each trailer
+
+As on a real dock, one receiver owns an inbound trailer until it is empty (count, damage, signature),
+and one loader owns an outbound trailer until it leaves (load sequence, seal). Someone else takes over
+only while the owner is on break or finishing their shift. The first version cost service: in the
+scan log, loading after the last pallet was staged went from 3 minutes (7 people loading the same
+trailer at once) to 22, and trailers whose picking finished near departure left late. Tested over
+60 days and 4 seeds:
+
+| With one owner per trailer | On-time | Wages / day |
+|---|---|---|
+| Before the rule (anyone loads) | 97.7 % | $16,350 |
+| Rule alone, waves released 4 h before departure | 94.1 % | $16,364 |
+| + 1 loader per shift | 94.8 % | $16,986 |
+| **Waves released 5 h before departure** | **97.2 %** | **$16,393** |
+| 5 h + 2 / 2 / 1 extra loaders | 97.8 % | $17,429 |
+
+**Finding:** the fix is timing, not staff. With one loader per trailer the pallets must be ready
+sooner, and releasing the wave an hour earlier does that for free (`CUTOFF_H = 5`).
 
 ### Dock layout: flow-through or U-shape?
 
@@ -173,14 +195,15 @@ that both receive and ship, outbound staging by each door and inbound staging be
 | `shared_dock` vs baseline (5 seeds, paired) | Mean difference | 95 % interval |
 |---|---|---|
 | On-time | +0.2 pts | −0.2 to +0.7 pts |
-| Yard wait (gate to door) | +0.3 min | −1.3 to +1.9 min |
-| Dock-to-stock (receipt to rack) | +0.3 min | −0.7 to +1.3 min |
-| Profit / day | +$974 | −$536 to +$2,484 |
+| Yard wait (gate to door) | **+8.2 min** | +6.5 to +10.0 min |
+| Dock-to-stock (receipt to rack) | −0.3 min | −3.4 to +2.8 min |
+| Profit / day | −$812 | −$3,141 to +$1,516 |
 
-**Finding:** six fewer doors and a smaller building cost nothing measurable in service or flow. The
-timing makes it work: inbound trailers arrive overnight and early morning, while each door is only
-needed for loading in the two hours before its route leaves, so one set of doors covers both jobs.
-The building and door savings are not in the profit figure.
+**Finding:** six fewer doors and a smaller building keep service and dock-to-stock within the noise:
+inbound trailers arrive overnight and early morning, while each door is only needed for loading in
+the two hours before its route leaves, so one set of doors covers both jobs. The cost shows up in the
+yard: with doors held back for departures, a trailer waits about 8 minutes longer at the gate, with
+every seed. The building and door savings are not in the profit figure.
 
 ```bash
 python main.py --scenario shared_dock        # watch it (receiving and shipping on the east wall)
@@ -246,11 +269,11 @@ seed 42. Every model was also retrained on each of the five seeds
 
 | Model | Result vs today's method | Value / day |
 |---|---|---|
-| Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week); 36.8 % ± 0.2 vs 51.9 % ± 0.2 over five seeds | $2,356 (5 seeds: $3,285 ± 598) |
-| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 89 cases per picker-hour) plus the forecast: 297 picker-hours a day instead of 350 | $1,129 (5 seeds: $1,250 ± 89) |
-| Late-order risk | PR-AUC 0.17 vs 0.02 for the largest-orders rule (5 seeds: 0.32 ± 0.13 vs 0.02 ± 0.01); top drivers are picker load, departure hour and pickers present (the true mechanism). The model beats the rule with every seed, but by how much swings, because late orders are rare (0.4–1.4 % of test orders). | $45 (5 seeds: $111 ± 71) |
-| Cold-room early warning | Warns 28 min before a breach vs 14 min for a fixed pre-alarm, with fewer alerts (5 seeds: 28 ± 0 vs 13 ± 0 min) | not monetised |
-| Spoilage risk | **A simple rule wins with every seed** ("fewer than 3 days left at receipt" is 99 % precise): net $925 ± 148 a day for the rule vs $397 ± 242 for the model. The fix is upstream: every spoiled pallet comes from an aged load, mostly from the poultry plant. | rule recommended |
+| Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week); 37.1 % ± 0.2 vs 52.4 % ± 0.3 over five seeds | $4,003 (5 seeds: $3,024 ± 1,563) |
+| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 86 cases per picker-hour) plus the forecast: 309 picker-hours a day instead of 353 | $811 (5 seeds: $815 ± 119) |
+| Late-order risk | PR-AUC 0.45 vs 0.04 for the largest-orders rule (5 seeds: 0.44 ± 0.06 vs 0.05); top drivers are picker load, departure hour and pickers present (the true mechanism). The model beats the rule with every seed; late orders are rare (1.2–2.0 % of test orders). | $276 (5 seeds: $246 ± 93) |
+| Cold-room early warning | Warns 29 min before a breach vs 13 min for a fixed pre-alarm, with fewer alerts (5 seeds: 28 ± 0 vs 13 ± 0 min) | not monetised |
+| Spoilage risk | **A simple rule wins with every seed** ("fewer than 3 days left at receipt" is 88 % precise): net $846 ± 120 a day for the rule vs $428 ± 306 for the model. The fix is upstream: every spoiled pallet comes from an aged load from the poultry plant. | rule recommended |
 
 ## Record videos
 
@@ -282,10 +305,11 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 - [x] Tests: case conservation, reproducibility, no-deadlock regressions, save/load, staffing signal
 - [x] Economy and realism calibration: staffing and events move service levels (table below)
 - [x] Data dictionary, SQLite star schema and KPI SQL queries
-- [x] Realistic supply problems: short shipments, aged loads, buyer order error (spoilage ≈ 0.5 %, fill rate ≈ 99.4 %)
+- [x] Realistic supply problems: short shipments, aged loads, buyer order error (spoilage ≈ 0.4 %, fill rate ≈ 99.7 %)
 - [x] Dashboards: Power BI export, guide and theme, plus a Streamlit mirror (operations, cold chain, inventory, labour, suppliers & yard, safety, recall trace, scenarios)
 - [x] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk (a rule wins), late-order risk, cold-room early warning
 - [x] Multi-seed evaluation: every scenario and model over 5 seeds, with paired differences and 95 % intervals
+- [x] Dock realism: one worker owns each trailer; shared-dock (U-flow) layout option
 - [ ] Closed-loop test: run the simulation with the ML labour plan and measure the real savings
 
 ## Tech

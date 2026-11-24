@@ -124,20 +124,21 @@ With the scenario slicer on *Baseline* and no date filter, the cards must show t
 `data/powerbi/_expected_measures.csv`. These are computed in Python from the same CSVs, with the
 same formulas. For the run in this repository (seed 42, 180 days):
 
-| Measure | Baseline | Lean staff | Extra pickers | Chaos | Summer BBQ |
-|---|---|---|---|---|---|
-| On-Time % | 98.8 % | 92.9 % | 100.0 % | 98.9 % | 98.6 % |
-| OTIF % | 94.9 % | 89.9 % | 97.7 % | 90.1 % | 94.1 % |
-| Fill Rate % | 99.58 % | 99.75 % | 99.83 % | 99.18 % | 99.56 % |
-| Cases per Picker Hour | 73.3 | 81.1 | 59.7 | 75.8 | 78.9 |
-| Spoilage % | 0.40 % | 0.37 % | 0.39 % | 0.31 % | 0.34 % |
-| Avg Yard Wait (min) | 24.8 | 28.8 | 25.4 | 25.5 | 28.4 |
-| Profit per Day $ | 2,534 | 259 | 2,849 | -1,272 | 9,004 |
-| LTI Rate per 100 FTE | 1.84 | 1.97 | 0.00 | 9.18 | 1.83 |
+| Measure | Baseline | Lean staff | Extra pickers | Chaos | Summer BBQ | Shared dock |
+|---|---|---|---|---|---|---|
+| On-Time % | 98.4 % | 93.1 % | 99.4 % | 97.5 % | 96.5 % | 99.2 % |
+| OTIF % | 95.0 % | 90.1 % | 95.0 % | 89.8 % | 93.3 % | 95.2 % |
+| Fill Rate % | 99.68 % | 99.75 % | 99.61 % | 99.26 % | 99.70 % | 99.62 % |
+| Cases per Picker Hour | 72.6 | 81.3 | 59.9 | 75.7 | 78.8 | 72.7 |
+| Spoilage % | 0.42 % | 0.39 % | 0.45 % | 0.44 % | 0.39 % | 0.48 % |
+| Avg Yard Wait (min) | 17.0 | 17.9 | 18.0 | 20.7 | 20.3 | 25.8 |
+| Profit per Day $ | 196 | -4,808 | 720 | -4,804 | -4,162 | 1,044 |
+| LTI Rate per 100 FTE | 1.83 | 1.98 | 1.62 | 0.00 | 1.83 | 1.83 |
 
 If a card differs, check the relationship directions and that exactly one scenario is selected.
 
 These numbers are one run each. Over five seeds ([docs/MULTISEED.md](../docs/MULTISEED.md)) baseline
-profit is $2,913 ± 1,178 a day, and extra pickers earn less than the baseline with 4 seeds out of 5. If
+profit is $2,667 ± 1,632 a day (seed 42 is a low one), and extra pickers earn less than the baseline with
+4 seeds out of 5. If
 you add a scenario-comparison page, show the multi-seed range from `data/seeds/multiseed_summary.csv`
 rather than ranking scenarios from a single run.

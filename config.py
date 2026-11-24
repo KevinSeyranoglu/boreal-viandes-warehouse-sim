@@ -255,7 +255,8 @@ for _r, _city in enumerate(_ROUTE_CITIES):
 # route id -> departure hour, shipping door index (0..SHIPPING_DOORS-1); one departure per hour 03:00–18:00
 ROUTES = {f"R{i + 1:02d}": (3 + i, i % SHIPPING_DOORS) for i in range(len(_ROUTE_CITIES))}
 ORDER_WINDOW_H = (8, 14)           # orders arrive 14 h to 8 h before departure
-CUTOFF_H = 4                       # wave released (allocated + picked) 4 h before departure
+CUTOFF_H = 5                       # wave released (allocated + picked) 5 h before departure: one loader
+                                   # owns each trailer, so its pallets must be staged in time to load it alone
 OUTBOUND_ARRIVE_BEFORE_H = 2.0     # empty trailer pulled to its shipping door
 OUTBOUND_YARD_BEFORE_H = 8.0       # carrier drops the empty trailer in the yard
 LOAD_RELAX_MIN = 30                # in the last 30 min, load in any order

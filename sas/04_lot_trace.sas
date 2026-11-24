@@ -32,5 +32,5 @@
   title;
 %mend trace;
 
-/* example: lot 6460 (chicken thighs V202), recalled on 2027-04-19 after reaching 42 stores (baseline run, seed 42) */
-%trace(lot=6460);
+/* example: lot 6370 (frozen ground pork C403), recalled on 2027-05-29 after reaching 33 stores (baseline run, seed 42) */
+%trace(lot=6370);

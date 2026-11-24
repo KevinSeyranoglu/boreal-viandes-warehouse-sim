@@ -135,6 +135,7 @@ class Truck:
     pallets_ordered: int = 0   # inbound: what we ordered (the plant may short-ship)
     aged_load: bool = False    # inbound: plant shipped older-than-usual product
     seq_violations: int = 0
+    crew: int | None = None    # the dock worker who owns this trailer (unloads or loads all of it)
     trail: list = field(default_factory=list)
 
 

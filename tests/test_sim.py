@@ -245,6 +245,24 @@ def test_headless_writes_csv_without_pygame(tmp_path):
         assert rows, table
 
 
+def test_one_dock_worker_owns_each_trailer():
+    """A trailer belongs to one worker, who unloads (or loads) all of it. Someone else only takes over
+    while the owner is on break or finishing their shift, and never works it alongside the owner."""
+    sim = Simulation(seed=42)
+    handled = {}
+    while sim.t < 3 * DAY:
+        sim.step(C.HEADLESS_TICK_SECONDS)
+        at_once = {}
+        for j in sim.jobs.values():
+            if j.kind in ("unload", "load") and j.worker is not None:
+                at_once.setdefault((j.truck, j.kind), set()).add(j.worker)
+                handled.setdefault((j.truck, j.kind), set()).add(j.worker)
+        for workers in at_once.values():
+            assert sum(sim.workers[w].state != "leaving" for w in workers) <= 1
+    single = sum(len(w) == 1 for w in handled.values())
+    assert single / len(handled) > 0.7                 # handovers only at breaks and shift changes
+
+
 def test_shared_dock_receives_and_ships_on_the_same_doors(tmp_path):
     """U-flow option: 14 doors on the east wall do both jobs. An inbound trailer never takes a door whose
     outbound trailer leaves within the buffer + loading window, and service holds up."""

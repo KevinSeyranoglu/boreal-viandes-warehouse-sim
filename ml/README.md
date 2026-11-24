@@ -40,7 +40,7 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 | | |
 |---|---|
 | **Decision** | Picker-hours to schedule each day |
-| **Method** | (1) A capacity curve: a logistic regression of the share of late orders against picking load (cases per scheduled picker-hour), fitted on the training days of the three staffing scenarios. (2) Each day is planned at the load where the curve gives 2 % late orders (about 88 cases/hour), from the demand forecast, plus a 5 % buffer. |
+| **Method** | (1) A capacity curve: a logistic regression of the share of late orders against picking load (cases per scheduled picker-hour), fitted on the training days of the three staffing scenarios. (2) Each day is planned at the load where the curve gives 2 % late orders (about 86 cases/hour), from the demand forecast, plus a 5 % buffer. |
 | **Baseline** | The fixed crew (same hours every day) |
 | **Metric** | Wages plus expected late fines per day (fines from the fitted curve, at the average fine) |
 | **$ assumption** | Picker wage × average shift premium. The fine per late order is the average OTIF penalty in training. |
@@ -56,19 +56,19 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 | **Model** | `HistGradientBoostingClassifier` (unweighted, so scores stay probabilities). Pooled over all five scenarios for more positive cases. |
 | **Baseline** | Rule "flag if fewer than N days are left", with N tuned on training |
 | **$ assumption** | The discount channel recovers 50 % of value. A pallet that would have spoiled gains 50 %; one that would have sold normally loses 50 %. Rule and model each pick their threshold to maximise this on training. A hybrid (rule plus extra model flags) was also tested. |
-| **Result** | **The rule wins.** Pallets that arrive with fewer than 3 days left spoil 99 % of the time. The model ranks a little better overall (PR-AUC), but its extra flags are too often wrong to pay for the markdown, and the hybrid loses too. |
+| **Result** | **The rule wins.** Pallets that arrive with fewer than 3 days left spoil 88 % of the time. The model ranks a little better overall (PR-AUC), but its extra flags are too often wrong to pay for the markdown, and the hybrid loses too. |
 | **Recommendation** | Use the rule at receiving. Fix the cause upstream: every spoiled pallet traces to an aged load, almost all from the poultry plant (`analytics/sql/09_spoilage_drivers.sql`). A minimum-remaining-shelf-life clause in the supplier contract, enforced at the door, removes the problem at the source. |
 
 ## 4. Late-order risk (`late_orders.py`)
 
 | | |
 |---|---|
-| **Decision** | At wave release (4 h before departure): which orders get priority (an extra picker for an hour)? |
+| **Decision** | At wave release (5 h before departure): which orders get priority (an extra picker for an hour)? |
 | **Features** | Order size and lines, rush flag, departure hour, stop, store kind, weekday, season, cases released for departures within ±2 h, pickers actually clocked in at release (sick calls and injuries count), and load ratio (window cases per picker present) |
 | **Model** | `HistGradientBoostingClassifier`, pooled over the five scenarios (staffing varies, so the model can learn its effect) |
 | **Baseline** | Flag the largest orders (same number of flags) |
 | **$ assumption** | A flag costs one overtime picker-hour ($40) and saves 50 % of the flagged orders that would have been late, i.e. the OTIF fine (3 % of order value). Threshold tuned on training. |
-| **Stability** | Late orders are rare (0.4–1.4 % of test orders, most in `lean_staff`), so PR-AUC swings between runs. Over five seeds it is 0.32 ± 0.13 (0.17 to 0.51) against 0.02 ± 0.01 for the rule, and the model is worth $111 ± 71 a day more than the rule. It wins with every seed; seed 42, published in RESULTS.md, is the weakest. See [docs/MULTISEED.md](../docs/MULTISEED.md). |
+| **Stability** | Late orders are rare (1.2–2.0 % of test orders, most in `lean_staff`), so PR-AUC moves between runs. Over five seeds it is 0.44 ± 0.06 (0.37 to 0.50) against 0.05 for the rule, and the model is worth $246 ± 93 a day more than the rule. It wins with every seed. See [docs/MULTISEED.md](../docs/MULTISEED.md). |
 | **Finding** | Permutation importance ranks load ratio, pickers present, weekday and departure hour on top. That is the mechanism built into the simulation, so the model recovered the real cause. Order size alone predicts nothing. |
 
 ## 5. Cold-room early warning (`temperature.py`)

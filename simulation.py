@@ -46,6 +46,7 @@ ROLE_JOBS = {
     "qa": [["inspect"]],
 }
 FORKLIFT_JOBS = {"putaway", "move_qa"}
+TRUCK_JOBS = ("unload", "load")
 JOB_KINDS = ("unload", "taxi", "putaway", "move_qa", "inspect", "pick", "load")
 _MID_Y = (ROOM_Y0 + ROOM_Y1) // 2
 SHARED = C.DOCK_LAYOUT == "shared"
@@ -1787,19 +1788,54 @@ class Simulation:
                 cands.extend(self.open_jobs[kind])
             if not cands:
                 continue
-            cands.sort(key=lambda jid: (-self.jobs[jid].priority, self.jobs[jid].created_t))
+            mine = self._own_trailer(w)
+            cands.sort(key=lambda jid: (self.jobs[jid].truck != mine if mine is not None else False,
+                                        -self.jobs[jid].priority, self.jobs[jid].created_t))
             # scan them all: a window of top jobs can be all blocked (QA full) and starve the
             # put-aways that would unblock them -> staging fills and inbound deadlocks
             for jid in cands:
                 job = self.jobs[jid]
+                if job.kind in TRUCK_JOBS and not self._may_work_trailer(w, job, mine):
+                    continue
                 if self._can_start(job):
                     self.open_jobs[job.kind].remove(jid)
                     job.worker = w.id
                     job.start_t = self.t
                     if job.kind == "taxi":
                         self._pair_taxi(w, job)
+                    if job.kind in TRUCK_JOBS:
+                        self._take_trailer(w, self.trucks[job.truck])
                     return job
         return None
+
+    # one dock worker owns a trailer: unloads (or loads) every pallet of it, then takes the next one
+    def _own_trailer(self, w):
+        return next((tr.id for tr in self.trucks.values() if tr.crew == w.id), None)
+
+    def _crew_present(self, wid, tid):
+        """The owner still counts while on shift and either free or working this trailer; a picker who
+        loaded a pallet and went back to picking, or anyone on break, hands the trailer over."""
+        o = self.workers.get(wid)
+        if o is None or o.state != "active" or o.task in ("break", "leave"):
+            return False
+        job = self.jobs.get(o.job) if o.job is not None else None
+        return job is None or job.truck == tid
+
+    def _may_work_trailer(self, w, job, mine):
+        tr = self.trucks.get(job.truck)
+        if tr is None:
+            return True                                   # _can_start refuses it
+        if tr.crew is not None and tr.crew != w.id and self._crew_present(tr.crew, tr.id):
+            return False                                  # someone else's trailer
+        if mine is not None and mine != tr.id:
+            return False                                  # your trailer until it leaves the door
+        return True
+
+    def _take_trailer(self, w, tr):
+        for other in self.trucks.values():                # a new trailer frees the finished one
+            if other.crew == w.id and other is not tr:
+                other.crew = None
+        tr.crew = w.id
 
     def _pair_taxi(self, w, job):
         """Fill the rider jack: add up to TAXI_PALLETS-1 more pallets going to the same room,

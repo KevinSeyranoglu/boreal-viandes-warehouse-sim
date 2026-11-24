@@ -135,7 +135,7 @@ jack), `FLT-<forklift>`, `CUST-<store>` (delivered), `DISPOSAL`, `QUARANTINE`.
 | order_id | int | Order ID |
 | store_id, route_id | text | Customer and route |
 | created_ts | ts | When the store placed the order (8–14 h before departure, or anytime for rush orders) |
-| cutoff_ts | ts | When the order was released for picking (4 h before departure) |
+| cutoff_ts | ts | When the order was released for picking (5 h before departure) |
 | scheduled_departure_ts | ts | Planned truck departure |
 | closed_ts | ts | When the order was closed (truck left and nothing outstanding) |
 | lines | int | Number of SKU lines |

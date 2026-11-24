@@ -1,4 +1,4 @@
-"""Model 4 – late-order risk: at wave release (4 h before departure), which orders will leave late?
+"""Model 4 – late-order risk: at wave release (5 h before departure), which orders will leave late?
 
 Features known at release: the order (cases, lines, rush, departure hour, stop on the route, store kind),
 the workload released for the same departure window, and the pickers actually clocked in at that moment
