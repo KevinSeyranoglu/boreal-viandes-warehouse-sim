@@ -128,6 +128,25 @@ streamlit run dashboard/app.py
 
 ![Dashboard: scenario comparison](docs/dashboard_scenarios.png)
 
+## WMS scan log, AS/400 extract and SAS
+
+Every pallet carries a GS1 **SSCC-18 licence plate** and every case a **GTIN-14**. Each scan is
+logged like a real WMS: received at the door (with the probe temperature and the PO), taxi to the drop
+point, put away in `FR-03-17-C`, picked (cases and catch weight, from which pallet to which outbound
+pallet), wrapped, loaded on the trailer (bill of lading) and shipped. The item master has pieces per case,
+net/tare/gross weight, case dimensions, Ti × Hi and storage temperatures. See `fact_transactions`,
+`dim_sku` and `dim_location` in the [data dictionary](DATA_DICTIONARY.md).
+
+Many Québec distributors still run their WMS on an **IBM AS/400**, and their analysts use **SAS**:
+
+```bash
+python analytics/export_as400.py      # -> data/as400/: ITMMST, LOCMST, ITHTRN, POHDR, PODTL, ORDHDR, ORDDTL, SHPHDR...
+```
+
+The files are fixed width, Windows-1252, with 10-character field names and `CYYMMDD` dates, plus a
+layout per file. [sas/](sas/README.md) has the generated import program and analyses: dock-to-stock
+time, picker productivity, lot trace for a recall (`%trace(lot=)`), supplier scorecard, and OTIF by route.
+
 ## Machine learning
 
 ```bash

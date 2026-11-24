@@ -316,6 +316,7 @@ INCIDENT_RATE_MULT = 1.0           # scenario knob
 
 # ------------------------------------------------------------------ data export
 DATA_DIR = "data"
+CASE_SCANS = False                 # also log every case scanned at picking (fact_case_scans; ~25k rows/day)
 TEMP_LOG_EVERY_MIN = 5
 
 # ------------------------------------------------------------------ scenarios (python main.py --scenario NAME)

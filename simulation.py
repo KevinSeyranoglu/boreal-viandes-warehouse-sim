@@ -18,6 +18,7 @@ from events import EventManager
 from models import (SKU, Door, Forklift, Job, Order, Pallet, RackSlot, Spot,
                     Store, Truck, Worker, Zone, from_dict, to_dict)
 from pathfinding import NavGrid
+import masterdata as M
 
 YARD, ROAD, FLOOR, WALL, RACK, DOCKDOOR = range(6)
 DAY = 86400.0
@@ -169,6 +170,31 @@ class Layout:
                         if t[y * W_ + x] != WALL:
                             self.zone_map.setdefault(y * W_ + x, key)
 
+        # WMS location codes: rack slot ROOM-ROW-BAY-LEVEL (FR-03-17-C), floor spots by area
+        self.slot_code = [""] * len(self.slots)
+        for key in ROOM_X:
+            zs = [sl for sl in self.slots if sl.zone == key]
+            cols = {x: i + 1 for i, x in enumerate(sorted({sl.x for sl in zs}))}
+            bays = {x: {y: i + 1 for i, y in enumerate(sorted({sl.y for sl in zs if sl.x == x}))} for x in cols}
+            for sl in zs:
+                self.slot_code[sl.id] = (f"{M.ROOM_CODE[key]}-{cols[sl.x]:02d}-{bays[sl.x][sl.y]:02d}-"
+                                         f"{M.LEVEL_LETTER[sl.level]}")
+        n_in = len(C.RECEIVING_DOOR_Y)
+        self.spot_code, seen = [""] * len(self.spots), {}
+        for sp in self.spots:
+            if sp.kind == "in":
+                area = f"STG-R{sp.door + 1:02d}"
+            elif sp.kind == "out":
+                area = f"STG-S{sp.door - n_in + 1:02d}"
+            elif sp.kind == "drop":
+                area = f"PD-{M.ROOM_CODE[sp.zone]}"
+            else:
+                area = "QA"
+            seen[area] = seen.get(area, 0) + 1
+            self.spot_code[sp.id] = f"{area}-{seen[area]:02d}"
+        self.door_code = [f"RCV-D{d.id + 1:02d}" if d.side == "in" else f"SHP-D{d.id - n_in + 1:02d}"
+                          for d in self.doors]
+
         # truck routes (tile coordinates): west yard for inbound, east apron for outbound
         self.in_dock_x = bx0 - 8          # trailer centre when backed onto a receiving door
         self.in_lane_x = bx0 - 24         # north-south lane in front of the receiving doors
@@ -189,6 +215,7 @@ class Simulation:
         self.nav = NavGrid(L.w, L.h, L.walkable)
         self.data = datalog or NullLog()
         self.skus = {row[0]: SKU(*row) for row in C.SKUS}
+        self.gtin = {code: M.gtin14(1, int(code[1:])) for code in self.skus}
         for sku in self.skus.values():
             sku.base_demand *= C.DEMAND_SCALE
         self.stores = {row[0]: Store(*row) for row in C.STORES}
@@ -336,6 +363,43 @@ class Simulation:
             self.data.row("fact_events", ts=self.ts(), event_type=key,
                           detail=json.dumps(kw, ensure_ascii=False))
 
+    # ------------------------------------------------------------------ WMS scan log
+    MVT = {"RCV": "101", "RQA": "101", "REJ": "122", "TXI": "999", "PUT": "999", "QAM": "999", "QRL": "321",
+           "QRJ": "553", "PCK": "999", "BLD": "", "LOD": "", "SHP": "601", "SPL": "551", "ADJ": "551",
+           "RCL": "344", "DSP": "", "RTV": "122"}
+
+    def loc_of(self, p):
+        if p.loc == "slot":
+            return self.layout.slot_code[p.ref]
+        if p.loc == "spot":
+            return self.layout.spot_code[p.ref]
+        return {"truck": "TRL-", "worker": "JACK-", "forklift": "FLT-"}.get(p.loc, "") + str(p.ref or "")
+
+    def _txn(self, kind, p=None, *, sku=None, lot=None, cases=None, kg=None, sscc=None, from_sscc="",
+             frm="", to="", user="", equip="", doc_type="", doc_no="", reason=""):
+        """One scan in the WMS transaction history (one row per pallet movement or pick line)."""
+        sku = sku if sku is not None else (p.sku if p is not None else None)
+        self.data.row("fact_transactions", ts=self.ts(), txn_id=self._nid("txn"), txn_type=kind,
+                      mvt_type=self.MVT.get(kind, ""), sscc=sscc if sscc is not None else (p.sscc if p else ""),
+                      from_sscc=from_sscc, sku_code=sku or "MIXED", gtin=self.gtin.get(sku, ""),
+                      lot=lot if lot is not None else (p.lot if p is not None and not p.mixed else ""),
+                      cases=cases if cases is not None else (p.cases if p is not None else 0),
+                      weight_kg=round(kg if kg is not None else (p.weight_kg if p is not None else 0.0), 2),
+                      from_loc=frm, to_loc=to, user_id=user, equipment_id=equip,
+                      doc_type=doc_type, doc_no=doc_no, reason=reason)
+
+    @staticmethod
+    def po_no(truck_id):
+        return f"PO{truck_id:07d}"
+
+    @staticmethod
+    def so_no(order_id):
+        return f"SO{order_id:07d}"
+
+    @staticmethod
+    def bol_no(truck_id):
+        return f"BL{truck_id:07d}"
+
     def fx_text(self, x, y, key, color="good", **kw):
         self.fx.append({"kind": "text", "x": x, "y": y, "key": key, "kw": kw, "color": color})
 
@@ -477,7 +541,8 @@ class Simulation:
         sku = self.skus[code]
         pid = self._nid("pallet")
         avg = (sku.weight_min + sku.weight_max) / 2
-        p = Pallet(id=pid, sku=code, lot=self._lot(plant, code, pack_day), cases=cases, pack_day=pack_day,
+        p = Pallet(id=pid, sku=code, lot=self._lot(plant, code, pack_day), cases=cases, sscc=M.sscc(pid),
+                   pack_day=pack_day,
                    bb_day=pack_day + sku.shelf_days, plant=plant,
                    weight_kg=round(cases * avg * (1 + self.rng.gauss(0, 0.01)), 1),
                    temp_class=sku.temp_class, temp_c=C.INBOUND_SPEC[sku.zone]["target"])
@@ -731,6 +796,7 @@ class Simulation:
         p = self.pallets.get(pid)
         if p is None:
             return
+        self._txn("DSP", p, frm=self.loc_of(p), to="DISPOSAL", reason=p.status)
         if p.loc == "spot":
             sp = self.spots[p.ref]
             sp.pallet = None
@@ -899,7 +965,7 @@ class Simulation:
         n_total = sum(1 for _ in rejected) + tr.__dict__.get("_unloaded", 0)
         for pid in rejected:
             del self.pallets[pid]
-        self.data.row("fact_inbound_trucks", truck_id=tr.id, plant_code=tr.origin,
+        self.data.row("fact_inbound_trucks", truck_id=tr.id, po_number=self.po_no(tr.id), plant_code=tr.origin,
                       scheduled_ts=self.ts(tr.sched_t), gate_ts=self.ts(tr.arrive_t),
                       dock_ts=self.ts(tr.dock_t), unload_end_ts=self.ts(self.t),
                       door=tr.door + 1, pallets_ordered=tr.pallets_ordered, pallets=n_total,
@@ -996,7 +1062,8 @@ class Simulation:
             self._maybe_close_order(o)
         dep["done"] = True
         self.chart_shipped[int(self.hour()) % 24] += int(cases)
-        self.data.row("fact_shipments", shipment_id=tr.id, route_id=tr.origin, truck_id=tr.id,
+        self.data.row("fact_shipments", shipment_id=tr.id, bol_number=self.bol_no(tr.id), route_id=tr.origin,
+                      truck_id=tr.id,
                       door=tr.door - len(C.RECEIVING_DOOR_Y) + 1, scheduled_departure_ts=self.ts(tr.departure_t),
                       actual_departure_ts=self.ts(), orders=len(orders), pallets=n_pallets, cases=int(cases),
                       revenue=round(rev, 2), late_min=round(late, 1), load_sequence_violations=tr.seq_violations)
@@ -1107,6 +1174,9 @@ class Simulation:
         self.log("ev_rush", "event", store=s.name, cases=sum(ln["qty"] for ln in lines))
 
     def _ship_pallet(self, p, o):
+        on_truck = p.loc == "truck"
+        self._txn("SHP", p, frm=self.loc_of(p), to=f"CUST-{o.store}", doc_type="BOL" if on_truck else "EXP",
+                  doc_no=self.bol_no(p.ref) if on_truck else f"EX{o.id:07d}", reason="" if on_truck else "expedited")
         cases = rev = 0.0
         for code, lot, n, _kg in p.contents:
             r = n * self.skus[code].value * C.DISTRIBUTION_FEE_RATE
@@ -1286,6 +1356,7 @@ class Simulation:
                 self.data.row("fact_spoilage", ts=self.ts(), pallet_id=p.id, sku_code=p.sku, lot=p.lot,
                               cases=p.cases, value=round(loss, 2), reason="expired")
                 self.log("log_spoiled", "bad", lot=p.lot, sku=p.sku, cases=p.cases)
+                self._txn("SPL", p, frm=self.loc_of(p), to=self.loc_of(p), reason="past best-before")
                 self.fx_text(p.x, p.y, "fx_spoiled", "bad", lot=p.lot)
                 if p.loc == "spot" and self.spots[p.ref].kind == "qa":
                     p.status = "spoiled"
@@ -1351,6 +1422,11 @@ class Simulation:
         if rc is None or p is None or p.status in ("recalled", "shipped"):
             return
         if p.mixed:
+            removed = sum(c[2] for c in p.contents if c[1] == rc["lot"])
+            if removed:
+                self._txn("RCL", p, sku=next(c[0] for c in p.contents if c[1] == rc["lot"]), lot=rc["lot"],
+                          cases=-removed, kg=0.0, frm=self.loc_of(p), to="QUARANTINE", doc_type="RCL",
+                          reason="recalled lot removed from outbound pallet")
             keep = [c for c in p.contents if c[1] != rc["lot"]]
             p.contents = keep
             p.cases = sum(c[2] for c in keep)
@@ -1493,6 +1569,9 @@ class Simulation:
             cases = max(1, min(p.cases - 1, round(p.cases * self.rng.uniform(*C.DROPPED_PALLET_LOSS))))
             p.cases -= cases
             cost = cases * self.skus[p.sku].value
+            self._txn("ADJ", p, cases=-cases, kg=-cases * (self.skus[p.sku].weight_min + self.skus[p.sku].weight_max) / 2,
+                      frm=self.loc_of(p), to=self.loc_of(p), user=op.id if op else "", equip=f"FLT-{f.id}",
+                      doc_type="ADJ", reason="dropped pallet")
             self.stats["damaged_cases"] += cases
             self.cum["damaged_cases"] = self.cum.get("damaged_cases", 0) + cases
         elif kind == "equipment_damage" or kind == "dropped_pallet":
@@ -1977,11 +2056,16 @@ class Simulation:
             decision = "reject"
         self.stats["pallets_received"] += 1
         door = self.doors[tr.door]
-        self.data.row("fact_pallet_receipts", pallet_id=p.id, truck_id=tr.id, sku_code=p.sku, lot=p.lot,
+        self.data.row("fact_pallet_receipts", pallet_id=p.id, sscc=p.sscc, po_number=self.po_no(tr.id),
+                      truck_id=tr.id, sku_code=p.sku, lot=p.lot,
                       plant_code=p.plant, cases=p.cases, weight_kg=p.weight_kg,
                       pack_date=self.day_str(int(math.floor(p.pack_day))),
                       best_before=self.day_str(int(math.floor(p.bb_day))), arrival_temp_c=p.temp_c,
                       decision=decision, received_ts=self.ts(), receiver_id=w.id)
+        kind = {"accept": "RCV", "qa": "RQA", "reject": "REJ"}[decision]
+        to = f"TRL-{tr.id}" if decision == "reject" else self.layout.spot_code[job.target]
+        self._txn(kind, p, frm=f"TRL-{tr.id}", to=to, user=w.id, doc_type="PO", doc_no=self.po_no(tr.id),
+                  reason=f"probe {p.temp_c} C")
         if decision == "reject":
             p.status = "rejected"
             self._cost("rejected_cost", C.REJECT_HANDLING_COST)    # refused at the door: supplier's loss
@@ -2038,6 +2122,7 @@ class Simulation:
             if job and self.spots[job.target].reserved == job.pallet:
                 self.spots[job.target].reserved = None
             return True
+        job.from_loc = self.loc_of(p)
         sp = self.spots[p.ref]
         if sp.pallet == p.id:
             sp.pallet = None
@@ -2055,6 +2140,7 @@ class Simulation:
         p.loc, p.ref = "spot", sp.id
         p.x, p.y = sp.x + 0.5, sp.y + 0.5
         w.cargo.remove(p.id)
+        self._txn("TXI", p, frm=job.from_loc, to=self.layout.spot_code[sp.id], user=w.id, equip="TAXI")
         if p.recalled and self.recall and self.recall["pulling"]:
             self._send_to_qa(p, "recall")
         else:
@@ -2068,6 +2154,7 @@ class Simulation:
             self._abort_job(w)
             return True
         f = self.forklifts[w.forklift]
+        job.from_loc = self.loc_of(p)
         if p.loc == "slot":
             self._take_from_slot(p)
         else:
@@ -2087,6 +2174,7 @@ class Simulation:
         self._put_in_slot(p, slot)
         f.carrying = None
         f.battery = max(0.0, f.battery - C.BATTERY_DRAIN_PER_LIFT)
+        self._txn("PUT", p, frm=job.from_loc, to=self.layout.slot_code[slot.id], user=w.id, equip=f"FLT-{f.id}")
         self.data.row("fact_putaway", pallet_id=p.id, sku_code=p.sku, zone=slot.zone, slot_id=slot.id,
                       level=slot.level, operator_id=w.id, forklift_id=f.id, start_ts=self.ts(job.start_t),
                       end_ts=self.ts(), travel_m=round(w.dist, 1),
@@ -2104,6 +2192,8 @@ class Simulation:
         p.loc, p.ref = "spot", sp.id
         p.x, p.y = sp.x + 0.5, sp.y + 0.5
         f.carrying = None
+        self._txn("QAM", p, frm=job.from_loc, to=self.layout.spot_code[sp.id], user=w.id, equip=f"FLT-{f.id}",
+                  doc_type="QA", reason=job.reason)
         if job.reason == "recall" or (p.recalled and self.recall and self.recall["pulling"]):
             p.status = "recalled"
             self._schedule(self.t + C.DISPOSE_AFTER_H * 3 * 3600, "dispose", pid=p.id)
@@ -2148,6 +2238,9 @@ class Simulation:
                 self.open_jobs["move_qa"].remove(jid)
                 if job.target is not None:
                     self.spots[job.target].reserved = None
+        self._txn("QRL" if release else ("RTV" if p.qa_reason == "inbound" else "QRJ"), p, frm=self.loc_of(p),
+                  to=self.loc_of(p), user=inspector or "", doc_type="QA",
+                  reason=f"{p.qa_reason or 'excursion'} {p.temp_c} C")
         if release:
             p.status = "received"
             p.excursion_min = 0.0
@@ -2202,7 +2295,18 @@ class Simulation:
         sku = self.skus[pk["sku"]]
         p.cases -= n
         p.reserved = max(0, p.reserved - n)
-        kg = round(sum(self.rng.uniform(sku.weight_min, sku.weight_max) for _ in range(n)), 2)
+        case_kg = [round(self.rng.uniform(sku.weight_min, sku.weight_max), 2) for _ in range(n)]
+        kg = round(sum(case_kg), 2)
+        if not w.build_sscc:                           # first case on an empty jack: new outbound licence plate
+            w.build_sscc = M.sscc(500_000_000 + self._nid("lp"))
+        slot_code = self.layout.slot_code[pk["slot"]]
+        self._txn("PCK", p, cases=n, kg=kg, sscc=w.build_sscc, from_sscc=p.sscc, frm=slot_code,
+                  to=f"JACK-{w.id}", user=w.id, doc_type="SO", doc_no=self.so_no(o.id))
+        if C.CASE_SCANS:
+            for i, ck in enumerate(case_kg, 1):
+                self.data.row("fact_case_scans", ts=self.ts(), sscc=w.build_sscc, from_sscc=p.sscc,
+                              sku_code=sku.code, gtin=self.gtin[sku.code], lot=p.lot, case_seq=i,
+                              net_kg=ck, order_id=o.id, picker_id=w.id, location=slot_code)
         w.jack_load.append([sku.code, p.lot, n, kg])
         w.cases_picked += n
         ln["picked"] += n
@@ -2221,7 +2325,8 @@ class Simulation:
                 o.mispicks_uncaught += 1
         slot = self.slots[pk["slot"]]
         self.data.row("fact_picks", pick_id=self._nid("pick"), order_id=o.id, store_id=o.store, job_id=j,
-                      picker_id=w.id, sku_code=sku.code, lot=p.lot, pallet_id=p.id, slot_id=slot.id,
+                      picker_id=w.id, sku_code=sku.code, lot=p.lot, pallet_id=p.id, from_sscc=p.sscc,
+                      to_sscc=w.build_sscc, slot_id=slot.id, location=slot_code,
                       zone=slot.zone, level=slot.level, cases=n, weight_kg=kg, start_ts=self.ts(w.mark_t),
                       end_ts=self.ts(), travel_m=round(w.dist, 1), mispick=int(bool(mispick)),
                       mispick_caught=int(mispick == 2), shift=w.shift, picker_skill=w.skill,
@@ -2267,10 +2372,14 @@ class Simulation:
                    temp_c=round(temp, 1),
                    mixed=True, store=o.store if o else None, order_id=job.order,
                    contents=[list(c) for c in w.jack_load], temp_class=job.temp_class, weight_kg=kg,
-                   x=sp.x + 0.5, y=sp.y + 0.5, received_t=self.t)
+                   x=sp.x + 0.5, y=sp.y + 0.5, received_t=self.t,
+                   sscc=w.build_sscc or M.sscc(500_000_000 + self._nid("lp")))
         self.pallets[pid] = p
         sp.pallet, sp.reserved = pid, None
+        self._txn("BLD", p, frm=f"JACK-{w.id}", to=self.layout.spot_code[sp.id], user=w.id, doc_type="SO",
+                  doc_no=self.so_no(job.order) if job.order else "", reason=f"{len(p.contents)} lines wrapped")
         w.jack_load = []
+        w.build_sscc = ""
         if o is None:
             return True
         o.pallets.append(pid)
@@ -2288,6 +2397,7 @@ class Simulation:
         if p is None or p.loc != "spot":
             self._abort_job(w)
             return True
+        job.from_loc = self.loc_of(p)
         sp = self.spots[p.ref]
         if sp.pallet == p.id:
             sp.pallet = None
@@ -2311,6 +2421,7 @@ class Simulation:
             return True
         tr.pallets.append(p.id)
         p.loc, p.ref, p.status = "truck", tr.id, "loaded"
+        self._txn("LOD", p, frm=job.from_loc, to=f"TRL-{tr.id}", user=w.id, doc_type="BOL", doc_no=self.bol_no(tr.id))
         return True
 
     # ------------------------------------------------------------------ day close & KPIs

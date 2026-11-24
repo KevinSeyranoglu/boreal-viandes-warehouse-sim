@@ -49,6 +49,7 @@ class Pallet:
     sku: str | None        # None for mixed outbound pallets
     lot: int
     cases: int
+    sscc: str = ""            # GS1 SSCC-18 licence plate on the pallet label
     pack_day: float = 0.0  # sim day index (can be negative = before the game started)
     bb_day: float = 0.0    # best-before, sim day index
     temp_c: float = 2.0
@@ -178,6 +179,7 @@ class Worker:
     forklift: int | None = None
     carrying: int | None = None
     cargo: list = field(default_factory=list)       # taxi: pallet ids on the rider jack (max TAXI_PALLETS)
+    build_sscc: str = ""                            # picker: licence plate of the outbound pallet being built
     jack_load: list = field(default_factory=list)   # [sku, lot, cases, kg]
     injured_until: float = 0.0                      # off work (lost-time injury) until this sim time
     activity: str = ""
@@ -226,6 +228,7 @@ class Job:
     truck: int | None = None
     picks: list = field(default_factory=list)
     reason: str = ""
+    from_loc: str = ""          # location code the pallet was taken from (for the scan log)
     temp_class: str = "chilled"
     worker: int | None = None
     start_t: float | None = None

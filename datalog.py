@@ -12,6 +12,7 @@ import os
 from collections import defaultdict
 
 import config as C
+import masterdata as M
 
 # Data contract: every fact table and its columns, in file order. Tables that got no rows
 # in a run are still written (header only) so downstream SQL and Power BI never break.
@@ -28,7 +29,7 @@ FACT_COLUMNS = {
     "fact_events": ["ts", "event_type", "detail"],
     "fact_incidents": ["ts", "incident_id", "category", "incident_type", "severity", "worker_id", "role",
                        "forklift_id", "zone", "days_lost", "cases_damaged", "cost"],
-    "fact_inbound_trucks": ["truck_id", "plant_code", "scheduled_ts", "gate_ts", "dock_ts", "unload_end_ts",
+    "fact_inbound_trucks": ["truck_id", "po_number", "plant_code", "scheduled_ts", "gate_ts", "dock_ts", "unload_end_ts",
                             "door", "pallets_ordered", "pallets", "pallets_rejected", "aged_load", "late_min",
                             "reefer_failure"],
     "fact_inventory_daily": ["date", "sku_code", "zone", "pallets", "cases_on_hand", "cases_reserved",
@@ -40,18 +41,23 @@ FACT_COLUMNS = {
     "fact_orders": ["order_id", "store_id", "route_id", "created_ts", "cutoff_ts", "scheduled_departure_ts",
                     "closed_ts", "lines", "cases_ordered", "cases_allocated", "cases_shipped", "fill_rate",
                     "on_time", "late_min", "rush", "expedited", "mispicks_uncaught", "revenue", "penalty"],
-    "fact_pallet_receipts": ["pallet_id", "truck_id", "sku_code", "lot", "plant_code", "cases", "weight_kg",
+    "fact_pallet_receipts": ["pallet_id", "sscc", "po_number", "truck_id", "sku_code", "lot", "plant_code", "cases", "weight_kg",
                              "pack_date", "best_before", "arrival_temp_c", "decision", "received_ts",
                              "receiver_id"],
     "fact_picks": ["pick_id", "order_id", "store_id", "job_id", "picker_id", "sku_code", "lot", "pallet_id",
-                   "slot_id", "zone", "level", "cases", "weight_kg", "start_ts", "end_ts", "travel_m",
+                   "from_sscc", "to_sscc", "slot_id", "location", "zone", "level", "cases", "weight_kg", "start_ts", "end_ts", "travel_m",
                    "mispick", "mispick_caught", "shift", "picker_skill", "days_to_expiry"],
     "fact_putaway": ["pallet_id", "sku_code", "zone", "slot_id", "level", "operator_id", "forklift_id",
                      "start_ts", "end_ts", "travel_m", "dock_dwell_min"],
     "fact_shipment_lots": ["order_id", "store_id", "sku_code", "lot", "cases", "shipped_ts"],
-    "fact_shipments": ["shipment_id", "route_id", "truck_id", "door", "scheduled_departure_ts",
+    "fact_shipments": ["shipment_id", "bol_number", "route_id", "truck_id", "door", "scheduled_departure_ts",
                        "actual_departure_ts", "orders", "pallets", "cases", "revenue", "late_min",
                        "load_sequence_violations"],
+    "fact_transactions": ["ts", "txn_id", "txn_type", "mvt_type", "sscc", "from_sscc", "sku_code", "gtin", "lot",
+                          "cases", "weight_kg", "from_loc", "to_loc", "user_id", "equipment_id", "doc_type",
+                          "doc_no", "reason"],
+    "fact_case_scans": ["ts", "sscc", "from_sscc", "sku_code", "gtin", "lot", "case_seq", "net_kg", "order_id",
+                        "picker_id", "location"],
     "fact_spoilage": ["ts", "pallet_id", "sku_code", "lot", "cases", "value", "reason"],
     "fact_temperature": ["ts", "zone", "temp_c", "setpoint_c", "max_c", "alarm", "door_open_s"],
     "fact_weather": ["date", "ambient_mean_c", "ambient_max_c"],
@@ -88,8 +94,21 @@ class CsvLog(NullLog):
              "zone": s.zone, "temp_class": s.temp_class, "case_kg_min": s.weight_min,
              "case_kg_max": s.weight_max, "shelf_life_days": s.shelf_days,
              "cases_per_pallet": s.cases_per_pallet, "value_per_case": s.value,
-             "base_demand_cases_day": s.base_demand, "plant_code": s.plant, "season": s.season or ""}
+             "base_demand_cases_day": s.base_demand, "plant_code": s.plant, "season": s.season or "",
+             **M.item_master(s, C.ZONES[s.zone])}
             for s in sim.skus.values()])
+        L = sim.layout
+        locs = [{"location": L.slot_code[sl.id], "loc_type": "RACK", "zone": sl.zone,
+                 "room_row": int(L.slot_code[sl.id].split("-")[1]), "bay": int(L.slot_code[sl.id].split("-")[2]),
+                 "level": sl.level + 1, "level_code": M.LEVEL_LETTER[sl.level], "pick_face": int(sl.level == 0),
+                 "reach_truck_required": int(sl.level > 0)} for sl in L.slots]
+        kinds = {"in": "STAGE_IN", "out": "STAGE_OUT", "qa": "QA_CAGE", "drop": "PD_POINT"}
+        locs += [{"location": L.spot_code[sp.id], "loc_type": kinds[sp.kind],
+                  "zone": sp.zone or ("qa" if sp.kind == "qa" else "dock"), "room_row": "", "bay": "", "level": 1,
+                  "level_code": "A", "pick_face": 0, "reach_truck_required": 0} for sp in L.spots]
+        locs += [{"location": c, "loc_type": "DOOR", "zone": "dock", "room_row": "", "bay": "", "level": 1,
+                  "level_code": "A", "pick_face": 0, "reach_truck_required": 0} for c in L.door_code]
+        self._write_table("dim_location", locs)
         self._write_table("dim_store", [
             {"store_id": s.id, "name": s.name, "city": s.city, "kind": s.kind, "size_index": s.size,
              "route_id": s.route, "stop": s.stop} for s in sim.stores.values()])

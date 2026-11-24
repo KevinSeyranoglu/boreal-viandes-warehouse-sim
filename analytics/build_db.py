@@ -23,7 +23,7 @@ sys.path.insert(0, ROOT)
 
 import config as C  # noqa: E402
 
-SHARED_DIMS = ("dim_sku", "dim_store", "dim_route", "dim_plant", "dim_zone")
+SHARED_DIMS = ("dim_sku", "dim_store", "dim_route", "dim_plant", "dim_zone", "dim_location")
 RUN_RE = re.compile(r"^(?P<scenario>.+)_seed(?P<seed>\d+)$")
 
 MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août",
@@ -39,6 +39,7 @@ INDEXES = {
     "fact_temperature": ["zone", "ts"],
     "fact_inventory_daily": ["date", "sku_code"],
     "fact_daily_kpi": ["date"],
+    "fact_transactions": ["sscc", "txn_type", "sku_code", "lot", "ts"],
 }
 
 
