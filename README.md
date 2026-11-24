@@ -238,6 +238,8 @@ streamlit run dashboard/app.py
 
 ![Dashboard: scenario comparison](docs/dashboard_scenarios.png)
 
+![Dashboard: models against today's method, and the closed-loop test of the three picker plans](docs/dashboard_models.png)
+
 ## WMS scan log, AS/400 extract and SAS
 
 Every pallet carries a GS1 **SSCC-18 licence plate** and every case a **GTIN-14**. Each scan is

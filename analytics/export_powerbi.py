@@ -27,6 +27,7 @@ SCENARIO_LABELS = {
     "extra_pickers": ("Préparateurs +", "Extra pickers", "+4 pickers per shift"),
     "chaos": ("Chaos", "Chaos", "3x more late trucks, failures and accidents"),
     "summer_bbq": ("BBQ d'été", "Summer BBQ", "June start: barbecue season peak"),
+    "shared_dock": ("Quai partagé", "Shared dock", "14 doors on one wall both receive and ship (U-flow)"),
 }
 
 # fact table -> (timestamp column that defines its date, {id column: key prefix})

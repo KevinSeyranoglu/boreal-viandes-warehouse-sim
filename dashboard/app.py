@@ -25,10 +25,12 @@ sys.path.insert(0, ROOT)
 import run_sql  # noqa: E402
 
 DB = os.environ.get("WAREHOUSE_DB", os.path.join(ROOT, "data", "warehouse.db"))
+METRICS = os.path.join(ROOT, "ml", "results", "metrics.json")
+CLOSED_LOOP = os.environ.get("CLOSED_LOOP_CSV", os.path.join(ROOT, "data", "seeds", "closed_loop.csv"))
 
 # ---- validated palette (dataviz reference instance): fixed slot order, colour follows the entity
 SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-SCENARIOS = ["baseline", "lean_staff", "extra_pickers", "chaos", "summer_bbq"]
+SCENARIOS = ["baseline", "lean_staff", "extra_pickers", "chaos", "summer_bbq", "shared_dock"]
 SCEN_COLOR = dict(zip(SCENARIOS, SLOTS))
 ZONE_COLOR = {"freezer": SLOTS[0], "processed": SLOTS[1], "fresh": SLOTS[2], "dock": SLOTS[3], "qa": SLOTS[4]}
 SHIFT_COLOR = {"day": SLOTS[0], "evening": SLOTS[1], "night": SLOTS[2]}
@@ -45,6 +47,24 @@ T = {  # fr, en
     "tab_inv": ("Inventaire et péremption", "Inventory & expiry"), "tab_lab": ("Main-d'œuvre", "Labour"),
     "tab_sup": ("Fournisseurs et cour", "Suppliers & yard"), "tab_safe": ("Santé-sécurité", "Safety"),
     "tab_recall": ("Rappel de lot", "Recall trace"), "tab_scen": ("Scénarios", "Scenarios"),
+    "tab_ml": ("Modèles et boucle fermée", "Models & closed loop"),
+    "ml_models": ("Chaque modèle contre la méthode d'aujourd'hui (graine 42, 60 derniers jours)",
+                  "Each model against today's method (seed 42, last 60 days)"),
+    "ml_model": ("Modèle", "Model"), "ml_metric": ("Mesure", "Metric"), "ml_value": ("Résultat du modèle", "Model result"),
+    "ml_today": ("Méthode actuelle", "Today's method"), "ml_note": ("Constat", "Finding"),
+    "cl_title": ("Boucle fermée : l'entrepôt relancé avec chaque plan de préparateurs",
+                 "Closed loop: the warehouse rerun with each picker plan"),
+    "cl_help": ("60 jours de test, 5 graines, différence appariée avec l'équipe fixe; barres = intervalle à 95 %.",
+                "60 test days, 5 seeds, paired difference with the fixed crew; bars = 95 % interval."),
+    "cl_cost": ("Salaires + pénalités vs équipe fixe ($ / jour, négatif = économie)",
+                "Wages + fines vs fixed crew ($ / day, negative = saving)"),
+    "cl_ontime": ("À temps vs équipe fixe (points)", "On time vs fixed crew (points)"),
+    "cl_missing": ("Résultats de boucle fermée introuvables. Lancez : python analytics/multiseed.py run, build, "
+                   "puis python ml/closed_loop.py", "Closed-loop results not found. Run: python analytics/multiseed.py "
+                   "run, build, then python ml/closed_loop.py"),
+    "pol_daily": ("Plan par jour", "Daily plan"), "pol_static": ("Équipe fixe rééquilibrée (sans ML)",
+                                                               "Rebalanced fixed crew (no ML)"),
+    "pol_shift": ("Plan par quart (ML)", "Per-shift plan (ML)"),
     "otif": ("OTIF (à temps et complet)", "OTIF (on time, in full)"), "on_time": ("À temps", "On time"),
     "fill": ("Taux de service", "Fill rate"), "cases_day": ("Caisses / jour", "Cases / day"),
     "profit_day": ("Profit / jour", "Profit / day"),
@@ -199,7 +219,7 @@ def main():
     bk = (lambda key: b[key]) if b is not None else (lambda key: None)
 
     tabs = st.tabs([t(x) for x in ("tab_ops", "tab_cold", "tab_inv", "tab_lab", "tab_sup", "tab_safe",
-                                   "tab_recall", "tab_scen")])
+                                   "tab_recall", "tab_scen", "tab_ml")])
 
     # 1. operations
     with tabs[0]:
@@ -391,6 +411,75 @@ def main():
                 fig.update_yaxes(categoryorder="array", categoryarray=order[::-1], title="")
                 show(style(fig, height=250, legend=False))
         data_expander(cmp)
+
+    # 9. models and closed loop: offline scores, then what each picker plan did when the warehouse ran it
+    with tabs[8]:
+        models_tab()
+
+
+def model_rows(m, fr):
+    d, lo, sp, te, lb = m["demand"], m["late_orders"], m["spoilage"], m["temperature"], m["labour"]
+    pct = lambda v: num(f"{100 * v:.1f}%")
+    return pd.DataFrame([
+        (("Prévision de la demande", "Demand forecast"), ("Erreur magasin × produit (WAPE)", "Store × SKU error (WAPE)"),
+         pct(d["wape_store_sku"]), pct(d["wape_store_sku_baseline"]),
+         ("Meilleure que « même jour la semaine passée »", "Beats 'same weekday last week'")),
+        (("Commandes en retard", "Late orders"), ("PR-AUC", "PR-AUC"), num(f"{lo['pr_auc']:.2f}"),
+         num(f"{lo['pr_auc_rule']:.2f}"), ("Bat la règle « plus grosses commandes »", "Beats 'largest orders' rule")),
+        (("Pertes (périmés)", "Spoilage"), ("Gain net / jour", "Net value / day"), money(sp["net_per_day_model"]),
+         money(sp["net_per_day_rule"]), ("La règle « moins de 3 jours » gagne", "The 'under 3 days' rule wins")),
+        (("Alerte chambre froide", "Cold-room warning"), ("Avance avant le dépassement", "Lead before breach"),
+         num(f"{te['lead_min_model']:.0f} min"), num(f"{te['lead_min_rule']:.0f} min"),
+         ("Deux fois plus d'avance", "Twice the warning time")),
+        (("Plan de préparateurs par jour", "Daily picker plan"), ("Heures / jour", "Hours / day"),
+         num(f"{lb['plan']['hours_per_day']:.0f}"), num(f"{lb['fixed']['hours_per_day']:.0f}"),
+         ("Économie promise hors ligne; perte en boucle fermée", "Promised saving offline; a loss in closed loop")),
+    ], columns=["m", "k", "v", "b", "n"]).assign(
+        m=lambda x: x["m"].str[0 if fr else 1], k=lambda x: x["k"].str[0 if fr else 1],
+        n=lambda x: x["n"].str[0 if fr else 1]).rename(columns={
+            "m": t("ml_model"), "k": t("ml_metric"), "v": t("ml_value"), "b": t("ml_today"), "n": t("ml_note")})
+
+
+def models_tab():
+    import json
+    import multiseed as ms
+    fr = st.session_state.get("lang", "FR") == "FR"
+    if os.path.exists(METRICS):
+        st.markdown("##### " + t("ml_models"))
+        with open(METRICS, encoding="utf-8") as fh:
+            st.dataframe(model_rows(json.load(fh), fr), width="stretch", hide_index=True)
+    st.markdown("##### " + t("cl_title"))
+    if not os.path.exists(CLOSED_LOOP):
+        st.info(t("cl_missing"))
+        return
+    cl = pd.read_csv(CLOSED_LOOP)
+    cl = cl[cl["buffer"] == cl["buffer"].min()]
+    rows = []
+    for pol in ("daily", "static", "shift"):
+        g = cl[cl["policy"] == pol]
+        if g.empty:
+            continue
+        cost = (g["loop_wages_per_day"] - g["base_wages_per_day"]
+                + g["loop_fines_expedites_per_day"] - g["base_fines_expedites_per_day"])
+        mc, _, hc = ms.ci(cost)
+        mo, _, ho = ms.ci(g["loop_on_time_pct"] - g["base_on_time_pct"])
+        rows.append({"policy": pol, "label": t("pol_" + pol), "cost": mc, "cost_h": hc, "ontime": mo, "ontime_h": ho})
+    r = pd.DataFrame(rows)
+    st.caption(t("cl_help"))
+    colour = {"daily": CRITICAL, "static": SLOTS[3], "shift": SLOTS[2]}
+    cols = st.columns(2)
+    for col, key, label, unit in ((cols[0], "cost", t("cl_cost"), "$"), (cols[1], "ontime", t("cl_ontime"), " pts")):
+        with col:
+            st.markdown("###### " + label)
+            fig = go.Figure()
+            for _, x in r.iterrows():
+                fig.add_trace(go.Bar(x=[x[key]], y=[x["label"]], orientation="h", marker_color=colour[x["policy"]],
+                                     error_x=dict(type="data", array=[x[key + "_h"]], color=INK2, thickness=1.5),
+                                     hovertemplate=f"{x['label']}<br>%{{x:,.1f}}{unit}<extra></extra>"))
+            fig.add_vline(x=0, line_color=BASE)
+            fig.update_yaxes(categoryorder="array", categoryarray=r["label"].tolist()[::-1], title="")
+            show(style(fig, height=230, legend=False))
+    data_expander(r.drop(columns="policy").round(1))
 
 
 if __name__ == "__main__":
