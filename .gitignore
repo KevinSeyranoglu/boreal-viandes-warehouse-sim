@@ -5,3 +5,4 @@ data/
 savegame.json
 .pytest_cache/
 videos/
+ECC_COMMANDS.txt
