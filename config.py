@@ -138,8 +138,9 @@ ZONES = {
 }
 ZONE_TAU_S = 1800.0                # refrigeration time constant
 ROOM_DOOR_PASS_S = 25.0            # a cold-room door stays open this long per pass
-ROOM_DOOR_LEAK = 3e-4              # heat exchange rate while a room door is open
+ROOM_DOOR_LEAK = 3e-4              # heat exchange rate while a room door is open (for a room of REF_ROOM_AREA)
 ROOM_DOOR_STUCK_LEAK = 5e-4        # when a door is stuck open
+REF_ROOM_AREA = 918                # m² the leak rates were tuned on; bigger rooms (more air) warm slower
 DOCK_DOOR_LEAK = 2e-5              # per fully open dock door (dock seals)
 TEMP_SENSOR_NOISE = 0.15
 ALARM_HYSTERESIS = 0.3
@@ -265,7 +266,8 @@ MISPICK_CATCH_PROB = 0.4           # caught at loading check
 # ------------------------------------------------------------------ economy
 STARTING_CASH = 250_000.0
 DISTRIBUTION_FEE_RATE = 0.06       # revenue = product value × rate per case shipped
-LATE_PENALTY_PER_ORDER = 250.0
+LATE_PENALTY_SHARE = 0.03          # late order fine: 3 % of its product value (retailer OTIF programs,
+                                   # e.g. Walmart charges 3 % of cost of goods on missed OTIF deliveries)
 SHORT_PENALTY_PER_CASE = 12.0
 MISPICK_PENALTY = 35.0
 EXPEDITE_COST = 380.0

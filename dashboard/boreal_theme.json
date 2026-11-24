@@ -1,0 +1,25 @@
+{
+  "name": "Boréal Viandes",
+  "dataColors": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
+  "background": "#fcfcfb",
+  "foreground": "#0b0b0b",
+  "tableAccent": "#2a78d6",
+  "good": "#0ca30c",
+  "neutral": "#fab219",
+  "bad": "#d03b3b",
+  "maximum": "#104281",
+  "center": "#f0efec",
+  "minimum": "#cde2fb",
+  "textClasses": {
+    "label": {"fontFace": "Segoe UI", "color": "#52514e", "fontSize": 10},
+    "title": {"fontFace": "Segoe UI Semibold", "color": "#0b0b0b", "fontSize": 12},
+    "callout": {"fontFace": "Segoe UI", "color": "#0b0b0b", "fontSize": 28}
+  },
+  "visualStyles": {
+    "*": {"*": {
+      "background": [{"color": {"solid": {"color": "#fcfcfb"}}}],
+      "border": [{"show": false}]
+    }},
+    "lineChart": {"*": {"lineStyles": [{"strokeWidth": 2}]}}
+  }
+}

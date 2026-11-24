@@ -83,22 +83,23 @@ python analytics/run_sql.py 06 --scenario chaos    # one query, another scenario
 `analytics/sql/` holds the nine queries a distribution-center manager asks for: daily OTIF,
 service by customer, cold-chain compliance, expiry risk, picker productivity, supplier scorecard,
 recall trace, scenario comparison and spoilage drivers. For example, the supplier scorecard and the
-spoilage-drivers query show that **every spoiled pallet came from an aged load (98 % of them poultry)**,
+spoilage-drivers query show that **every spoiled pallet came from an aged load (99 % of them poultry)**,
 which arrived with less than 3 days of shelf life left.
 
 Scenarios for what-if comparisons (180 simulated days, seed 42, from `analytics/sql/08_scenario_comparison.sql`):
 
-| Scenario | On-time | Fill rate | Wages / day | Late and expedite cost / day | Profit / day |
+| Scenario | On-time | Fill rate | Wages / day | Late fines and expedites / day | Profit / day |
 |---|---|---|---|---|---|
-| `baseline` | 99.0 % | 99.81 % | $16,379 | $916 | **$4,277** |
-| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 92.1 % | 99.69 % | $15,241 | $2,424 | $1,542 |
-| `extra_pickers` (+4 pickers per shift) | 100 % | 99.79 % | $18,407 | $864 | $2,085 |
-| `chaos` (3x more incidents and accidents) | 99.0 % | 99.40 % | $16,363 | $2,312 | -$5,035 |
-| `summer_bbq` (June start, BBQ peak) | 97.5 % | 99.72 % | $16,336 | $1,466 | $6,121 |
+| `baseline` | 98.8 % | 99.62 % | $16,307 | $2,317 | **$1,558** |
+| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 91.5 % | 99.64 % | $15,243 | $7,065 | -$752 |
+| `extra_pickers` (+4 pickers per shift) | 100.0 % | 99.73 % | $18,401 | $1,037 | $1,320 |
+| `chaos` (3x more incidents and accidents) | 98.7 % | 99.13 % | $16,349 | $4,048 | -$2,917 |
+| `summer_bbq` (June start, BBQ peak) | 98.6 % | 99.59 % | $16,376 | $2,677 | $9,004 |
 
-Cutting staff saves $1,100 a day in wages but costs $1,500 more in late deliveries and expedites,
-plus extra spoilage. Extra pickers buy perfect punctuality for $2,000 more a day, which the service
-gain doesn't repay. This is the trade-off the labour-planning model will optimise.
+Cutting staff saves $1,064 a day in wages but costs $4,748 more in late-delivery fines (3 % of
+the order value, as in retailer OTIF programs) and expedites. Extra pickers buy perfect punctuality for
+$2,094 more a day in wages, which the service gain doesn't repay. This is the trade-off the
+labour-planning model will optimise.
 
 ## Tests
 
@@ -106,6 +107,26 @@ gain doesn't repay. This is the trade-off the labour-planning model will optimis
 pip install -r requirements-dev.txt
 python -m pytest tests/ -q
 ```
+
+## Dashboards
+
+**Power BI** (the main deliverable): `python analytics/export_powerbi.py` writes a Power BI-ready
+star schema to `data/powerbi/`. **[dashboard/POWERBI_GUIDE.md](dashboard/POWERBI_GUIDE.md)** covers the
+relationships, the 17 DAX measures (OTIF, fill rate, cases per picker hour, cold-chain compliance,
+yard wait, supplier on-time, lost-time injury rate…) and the layout of 8 report pages. It also gives
+the value each measure must show, computed in Python from the same files, so the report can be
+checked number by number. A matching theme (colour-blind-checked palette) is in
+`dashboard/boreal_theme.json`.
+
+**Streamlit mirror** (runs on Linux, same pages, French and English, every card compared with the baseline):
+
+```bash
+streamlit run dashboard/app.py
+```
+
+![Dashboard: operations](docs/dashboard_operations.png)
+
+![Dashboard: scenario comparison](docs/dashboard_scenarios.png)
 
 ## Record videos
 
@@ -138,7 +159,7 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 - [x] Economy and realism calibration: staffing and events move service levels (table below)
 - [x] Data dictionary, SQLite star schema and KPI SQL queries
 - [x] Realistic supply problems: short shipments, aged loads, buyer order error (spoilage ≈ 0.5 %, fill rate ≈ 99.4 %)
-- [ ] Power BI dashboards: operations, cold chain, inventory and expiry, labour, recall trace, scenario comparison
+- [x] Dashboards: Power BI export, guide and theme, plus a Streamlit mirror (operations, cold chain, inventory, labour, suppliers & yard, safety, recall trace, scenarios)
 - [ ] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk, late-shipment risk, temperature anomaly detection
 
 ## Tech

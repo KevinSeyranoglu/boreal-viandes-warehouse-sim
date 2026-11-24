@@ -121,7 +121,7 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 | expedited | int | 1 if part of the order missed the truck and went by courier (costs $380) |
 | mispicks_uncaught | int | Wrong cases that reached the customer |
 | revenue | real | Distribution fee earned (6 % of product value shipped) |
-| penalty | real | $250 if late, + $12 per short case, + $35 per uncaught mispick |
+| penalty | real | 3 % of the order's product value if late (as in retailer OTIF fine programs), + $12 per short case, + $35 per uncaught mispick |
 
 **OTIF** (on time in full) = `on_time = 1 AND fill_rate >= 0.999`.
 

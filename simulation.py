@@ -766,6 +766,8 @@ class Simulation:
                 leak = C.ROOM_DOOR_LEAK
                 z.door_open_s = max(0.0, z.door_open_s - dt)
             if leak:
+                x0, y0, x1, y1 = self.layout.areas[key]
+                leak *= C.REF_ROOM_AREA / ((x1 - x0 - 1) * (y1 - y0 - 1))     # same heat, more air
                 z.temp += (dock.temp - z.temp) * min(1.0, leak * dt)
         amb_factor = 1 + C.ENERGY_AMBIENT_FACTOR * max(0.0, amb)
         for z in self.zones.values():
@@ -1149,7 +1151,8 @@ class Simulation:
         allocated = sum(ln["alloc"] for ln in o.lines)
         on_time = o.on_truck and o.late_min <= C.DEPARTURE_GRACE_MIN
         short = max(0, ordered - shipped)
-        penalty = (0 if on_time else C.LATE_PENALTY_PER_ORDER) + short * C.SHORT_PENALTY_PER_CASE \
+        value = sum(ln["qty"] * self.skus[ln["sku"]].value for ln in o.lines)
+        penalty = (0 if on_time else C.LATE_PENALTY_SHARE * value) + short * C.SHORT_PENALTY_PER_CASE \
             + o.mispicks_uncaught * C.MISPICK_PENALTY
         self._cost("penalties", penalty)
         st = self.stats
