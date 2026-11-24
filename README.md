@@ -25,19 +25,15 @@ scenario is compared with the baseline run of the same seed, with a 95 % interva
 ## How it fits together
 
 ```mermaid
-flowchart LR
-    SIM["Simulation<br/>pygame-ce, headless"] --> CSV["27 CSV tables per run<br/>star schema"]
-    SIM -.->|"5 seeds × 5 scenarios"| CSV
+flowchart TD
+    SIM["Simulation · pygame-ce<br/>5 scenarios × 5 seeds"] --> CSV["27 CSV tables per run<br/>star schema"]
     CSV --> SQLITE[("SQLite")]
     CSV --> DUCK[("DuckDB + Parquet")]
-    CSV --> AS400["AS/400 extract<br/>fixed width, CYYMMDD"]
-    AS400 --> SAS["SAS programs<br/>lot trace, dock-to-stock"]
-    SQLITE --> SQL["9 KPI queries"]
-    DUCK --> SQL
-    SQLITE --> PBI["Power BI export<br/>+ DAX guide"]
-    SQLITE --> ST["Streamlit dashboard<br/>FR / EN"]
-    SQLITE --> ML["5 ML models<br/>vs today's method, in $"]
-    DUCK --> MS["Multi-seed report<br/>mean ± sd, paired 95 % CI"]
+    CSV --> AS400["AS/400 extract"]
+    SQLITE --> BI["Power BI · Streamlit"]
+    SQLITE --> ML["5 ML models, in $"]
+    DUCK --> MS["Multi-seed report"]
+    AS400 --> SAS["SAS programs"]
 ```
 
 **Skills shown:** SQL (window functions, `QUALIFY`, views), Python and pandas, DuckDB and Parquet,
