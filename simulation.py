@@ -533,6 +533,9 @@ class Simulation:
 
     def _lot(self, plant, code, pack_day):
         key = f"{plant}|{code}|{int(math.floor(pack_day))}"
+        recalled = self.flags.setdefault("recalled_lots", [])
+        while key in self.lots and self.lots[key] in recalled:
+            key += "|new"                      # the plant never ships a recalled lot again: new lot number
         if key not in self.lots:
             self.lots[key] = 4000 + len(self.lots)
         return self.lots[key]
@@ -1384,6 +1387,7 @@ class Simulation:
 
     # ------------------------------------------------------------------ recall
     def start_recall(self, lot):
+        self.flags.setdefault("recalled_lots", []).append(lot)      # blocked for good (WMS lot hold)
         targets = []
         sku = None
         for p in self.pallets.values():
@@ -1399,6 +1403,19 @@ class Simulation:
         self.recall = {"lot": lot, "sku": sku, "start_t": self.t, "targets": targets, "pulling": False,
                        "stores": stores, "shipped_cases": sum(r[1] for r in self.lot_shipments.get(str(lot), [])),
                        "response_min": None}
+        # The WMS lot hold is immediate: dock scans take the lot off every outbound pallet and picker jack
+        # now (nothing of it can be loaded or shipped). Only rack pallets wait for the physical pull.
+        for pid in [t for t in targets if self.pallets[t].mixed]:
+            self.recall_pull(pid)
+        for w in self.workers.values():
+            held = [c for c in w.jack_load if c[1] == lot]
+            if held:
+                w.jack_load = [c for c in w.jack_load if c[1] != lot]
+                n = sum(c[2] for c in held)
+                self.cum["recall_jack_cases"] = self.cum.get("recall_jack_cases", 0) + n
+                self._txn("RCL", sku=held[0][0], lot=lot, cases=-n, kg=-sum(c[3] for c in held), sscc=w.build_sscc,
+                          frm=f"JACK-{w.id}", to="QUARANTINE", user=w.id, doc_type="RCL",
+                          reason="recalled lot removed from picker jack")
         self._schedule(self.t + self.rng.uniform(*C.RECALL_AUTO_PULL_H) * 3600, "recall_auto")
         self.log("ev_recall", "event", lot=lot, sku=sku, pallets=len(targets), stores=len(stores))
         cx, cy = self._zone_center("dock")
@@ -2048,7 +2065,9 @@ class Simulation:
         tr = self.trucks[job.truck]
         sku = self.skus[p.sku]
         spec = C.INBOUND_SPEC[sku.zone]
-        if p.temp_c <= spec["accept_max"]:
+        if p.lot in self.flags.get("recalled_lots", []):
+            decision = "reject"                # safety net: a recalled lot is refused at the door
+        elif p.temp_c <= spec["accept_max"]:
             decision = "accept"
         elif p.temp_c <= spec["qa_max"]:
             decision = "qa"
@@ -2065,7 +2084,7 @@ class Simulation:
         kind = {"accept": "RCV", "qa": "RQA", "reject": "REJ"}[decision]
         to = f"TRL-{tr.id}" if decision == "reject" else self.layout.spot_code[job.target]
         self._txn(kind, p, frm=f"TRL-{tr.id}", to=to, user=w.id, doc_type="PO", doc_no=self.po_no(tr.id),
-                  reason=f"probe {p.temp_c} C")
+                  reason="recalled lot" if p.lot in self.flags.get("recalled_lots", []) else f"probe {p.temp_c} C")
         if decision == "reject":
             p.status = "rejected"
             self._cost("rejected_cost", C.REJECT_HANDLING_COST)    # refused at the door: supplier's loss

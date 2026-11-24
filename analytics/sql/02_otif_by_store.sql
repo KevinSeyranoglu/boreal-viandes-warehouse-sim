@@ -10,5 +10,5 @@ SELECT s.store_id, s.name, s.kind, s.route_id, s.stop,
 FROM fact_orders o
 JOIN dim_store s USING (store_id)
 WHERE o.scenario = :scenario
-GROUP BY s.store_id
+GROUP BY s.store_id, s.name, s.kind, s.route_id, s.stop
 ORDER BY otif_pct, penalties DESC;

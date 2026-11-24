@@ -20,5 +20,5 @@ FROM fact_inbound_trucks t
 JOIN dim_plant p USING (plant_code)
 LEFT JOIN spoiled s USING (plant_code)
 WHERE t.scenario = :scenario
-GROUP BY p.plant_code
+GROUP BY p.plant_code, p.name_fr, s.pallets_spoiled, s.spoiled_value
 ORDER BY spoiled_value DESC;

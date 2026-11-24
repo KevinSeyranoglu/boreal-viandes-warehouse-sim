@@ -68,6 +68,7 @@ Because the data is simulated, the true causes are known ([DATA_DICTIONARY.md](.
 | **Model** | `HistGradientBoostingClassifier`, pooled over the five scenarios (staffing varies, so the model can learn its effect) |
 | **Baseline** | Flag the largest orders (same number of flags) |
 | **$ assumption** | A flag costs one overtime picker-hour ($40) and saves 50 % of the flagged orders that would have been late, i.e. the OTIF fine (3 % of order value). Threshold tuned on training. |
+| **Stability** | Late orders are rare (about 160 in the test period, most in `lean_staff`), so PR-AUC swings between data versions (0.42 in one, 0.17 in the next) with the same features and the same top drivers. Treat one run's number as noisy; a multi-seed evaluation is the planned fix. |
 | **Finding** | Permutation importance ranks load ratio, pickers present, weekday and departure hour on top. That is the mechanism built into the simulation, so the model recovered the real cause. Order size alone predicts nothing. |
 
 ## 5. Cold-room early warning (`temperature.py`)

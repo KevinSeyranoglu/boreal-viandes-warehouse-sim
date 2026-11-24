@@ -6,8 +6,8 @@ shipped_7d AS (
     SELECT l.sku_code, SUM(l.cases) / 7.0 AS cases_per_day
     FROM fact_shipment_lots l, last_day
     WHERE l.scenario = :scenario
-      AND date(l.shipped_ts) > date(last_day.date, '-7 day')
-      AND date(l.shipped_ts) <= last_day.date
+      AND julianday(date(l.shipped_ts)) > julianday(last_day.date) - 7     -- the last 7 days
+      AND julianday(date(l.shipped_ts)) <= julianday(last_day.date)
     GROUP BY l.sku_code
 )
 SELECT i.date, k.sku_code, k.name_fr, i.zone, k.shelf_life_days,

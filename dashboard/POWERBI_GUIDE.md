@@ -126,13 +126,13 @@ same formulas. For the run in this repository (seed 42, 180 days):
 
 | Measure | Baseline | Lean staff | Extra pickers | Chaos | Summer BBQ |
 |---|---|---|---|---|---|
-| On-Time % | 98.8 % | 91.5 % | 100.0 % | 98.7 % | 98.6 % |
-| OTIF % | 95.0 % | 88.1 % | 96.4 % | 90.4 % | 94.1 % |
-| Fill Rate % | 99.57 % | 99.63 % | 99.70 % | 99.09 % | 99.56 % |
-| Cases per Picker Hour | 73.3 | 81.5 | 59.6 | 75.7 | 78.9 |
-| Spoilage % | 0.43 % | 0.39 % | 0.43 % | 0.35 % | 0.34 % |
-| Avg Yard Wait (min) | 25.1 | 30.2 | 23.6 | 30.6 | 28.4 |
-| Profit per Day $ | 1,558 | -752 | 1,320 | -2,917 | 9,004 |
-| LTI Rate per 100 FTE | 3.68 | 0.00 | 1.62 | 1.84 | 1.83 |
+| On-Time % | 98.8 % | 92.9 % | 100.0 % | 98.9 % | 98.6 % |
+| OTIF % | 94.9 % | 89.9 % | 97.7 % | 90.1 % | 94.1 % |
+| Fill Rate % | 99.58 % | 99.75 % | 99.83 % | 99.18 % | 99.56 % |
+| Cases per Picker Hour | 73.3 | 81.1 | 59.7 | 75.8 | 78.9 |
+| Spoilage % | 0.40 % | 0.37 % | 0.39 % | 0.31 % | 0.34 % |
+| Avg Yard Wait (min) | 24.8 | 28.8 | 25.4 | 25.5 | 28.4 |
+| Profit per Day $ | 2,534 | 259 | 2,849 | -1,272 | 9,004 |
+| LTI Rate per 100 FTE | 1.84 | 1.97 | 0.00 | 9.18 | 1.83 |
 
 If a card differs, check the relationship directions and that exactly one scenario is selected.

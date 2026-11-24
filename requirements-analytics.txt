@@ -6,4 +6,5 @@ jupyter
 matplotlib>=3.7
 streamlit>=1.40
 plotly>=5.24
+duckdb>=1.1
 pytest>=8

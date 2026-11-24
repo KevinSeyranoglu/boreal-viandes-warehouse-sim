@@ -11,5 +11,5 @@ JOIN fact_pallet_receipts r ON r.scenario = sp.scenario AND r.pallet_id = sp.pal
 JOIN fact_inbound_trucks t  ON t.scenario = r.scenario AND t.truck_id = r.truck_id
 JOIN dim_sku k ON k.sku_code = sp.sku_code
 WHERE sp.scenario = :scenario
-GROUP BY sp.sku_code, r.plant_code
+GROUP BY sp.sku_code, k.name_fr, r.plant_code
 ORDER BY value_spoiled DESC;

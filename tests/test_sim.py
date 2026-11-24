@@ -92,7 +92,8 @@ def test_cases_are_conserved(scenario, monkeypatch):
     start = on_hand(sim)
     run(sim, 14)
     assert flows["received"] > 0 and flows["shipped"] > 0
-    out = flows["shipped"] + sim.pallets.removed + flows["recall_cut"] + sim.cum.get("damaged_cases", 0)
+    out = (flows["shipped"] + sim.pallets.removed + flows["recall_cut"] + sim.cum.get("damaged_cases", 0)
+           + sim.cum.get("recall_jack_cases", 0))
     assert start + flows["received"] == on_hand(sim) + out
 
 
@@ -164,6 +165,38 @@ def test_staffing_moves_service_levels(monkeypatch):
         on_time[scenario] = run(Simulation(seed=42), 14).kpis()["on_time"]
         monkeypatch.undo()
     assert on_time["lean_staff"] < on_time["baseline"] < on_time["extra_pickers"]
+
+
+def test_recalled_lot_never_comes_back():
+    """Regressions: after a recall the plant shipped the same lot again, and outbound pallets of the lot kept
+    shipping during the 1–4 h before the physical pull."""
+    sim = run(Simulation(seed=42), 2)
+    lot = next(p.lot for p in sim.pallets.values() if not p.mixed and p.status == "stored")
+    sim.start_recall(lot)
+    # the lot hold is immediate: no outbound pallet or picker jack still carries it
+    assert not any(p.mixed and any(c[1] == lot for c in p.contents) for p in sim.pallets.values())
+    assert not any(c[1] == lot for w in sim.workers.values() for c in w.jack_load)
+    made, picked = [], []
+    make, pick = sim._make_pallet, sim._do_pick
+
+    def spy_make(*a, **k):
+        p = make(*a, **k)
+        made.append(p.lot)
+        return p
+
+    def spy_pick(w, j, i):
+        pk = sim.jobs[j].picks[i]
+        p = sim.pallets.get(pk["p"])
+        if p is not None and pk["n"] > 0 and p.status == "stored" and not p.recalled and p.loc == "slot":
+            picked.append(p.lot)
+        return pick(w, j, i)
+    sim._make_pallet, sim._do_pick = spy_make, spy_pick
+    run(sim, 5)
+    assert made and lot not in made                    # the plant uses new lot numbers
+    assert picked and lot not in picked                # and nothing of it is picked again
+    key = next(k for k, v in sim.lots.items() if v == lot)
+    plant, code, pack_day = key.split("|")[:3]
+    assert sim._lot(plant, code, float(pack_day)) != lot   # same plant, product and pack day -> new lot
 
 
 # ---------------------------------------------------------------- save / load

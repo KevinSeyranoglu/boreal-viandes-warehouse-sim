@@ -6,7 +6,9 @@ Every headless run writes one CSV per table to `data/<scenario>_seed<seed>/`:
 python main.py --headless --days 180 --seed 42 --scenario baseline
 ```
 
-`python analytics/build_db.py` loads every run folder into **`data/warehouse.db`** (SQLite). In
+`python analytics/build_db.py` loads every run folder into **`data/warehouse.db`** (SQLite), and
+`python analytics/build_duckdb.py` into **`data/warehouse.duckdb`** (DuckDB: same tables, with `TIMESTAMP`/`DATE`
+types, the views `v_pallet_history`, `v_dock_to_stock`, `v_lot_trace`, `v_order_service`, and optional Parquet). In
 the database, every fact table and `dim_worker` start with two extra columns, `scenario` and
 `seed`, and a generated `dim_date` is added. The columns below are the data contract
 (`datalog.FACT_COLUMNS`). A table with no rows in a run is still written with its header, and
@@ -372,7 +374,7 @@ injuries per lost-time one (assumption). Forklift accidents are applied per hour
 driven; the injury types follow the IRSST split of serious Québec forklift accidents (struck pedestrian
 31 %, tip-over 28 %, crushed by the load 22 %, other 19 %). Property damage is 30 per forklift
 injury (Bird's safety triangle, an assumption). The `chaos` scenario triples all rates. At real rates,
-incidents are rare: about 3 injuries in 180 days at baseline.
+incidents are rare: a handful in 180 days at baseline (1 lost-time injury and 2 forklift damage incidents in the current run).
 
 ### fact_weather: one row per day
 | Column | Type | Meaning |

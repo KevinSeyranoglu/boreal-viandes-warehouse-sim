@@ -80,26 +80,43 @@ python analytics/run_sql.py                        # run every KPI query (scenar
 python analytics/run_sql.py 06 --scenario chaos    # one query, another scenario
 ```
 
+**DuckDB** (columnar, typed, about 5 seconds to build and 220 MB against 1.7 GB for SQLite):
+
+```bash
+python analytics/build_duckdb.py --parquet          # -> data/warehouse.duckdb (+ data/parquet/, partitioned by scenario)
+python analytics/run_sql.py --engine duckdb          # the same nine queries, same numbers
+python analytics/run_sql.py --engine duckdb --file analytics/duckdb_examples.sql
+```
+
+The DuckDB database has real `TIMESTAMP` and `DATE` columns, keeps barcodes as text, and adds four
+views: `v_pallet_history` (each pallet's numbered scans), `v_dock_to_stock`, `v_lot_trace` (lot →
+outbound pallet → store) and `v_order_service`. [analytics/duckdb_examples.sql](analytics/duckdb_examples.sql)
+shows what SQLite can't do easily: percentiles, ABC analysis with window functions, `QUALIFY`, `PIVOT`,
+and a recall summary.
+
 `analytics/sql/` holds the nine queries a distribution-center manager asks for: daily OTIF,
 service by customer, cold-chain compliance, expiry risk, picker productivity, supplier scorecard,
 recall trace, scenario comparison and spoilage drivers. For example, the supplier scorecard and the
-spoilage-drivers query show that **every spoiled pallet came from an aged load (99 % of them poultry)**,
+spoilage-drivers query show that **every spoiled pallet came from an aged load (98 % of them poultry)**,
 which arrived with less than 3 days of shelf life left.
 
 Scenarios for what-if comparisons (180 simulated days, seed 42, from `analytics/sql/08_scenario_comparison.sql`):
 
 | Scenario | On-time | Fill rate | Wages / day | Late fines and expedites / day | Profit / day |
 |---|---|---|---|---|---|
-| `baseline` | 98.8 % | 99.62 % | $16,307 | $2,317 | **$1,558** |
-| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 91.5 % | 99.64 % | $15,243 | $7,065 | -$752 |
-| `extra_pickers` (+4 pickers per shift) | 100.0 % | 99.73 % | $18,401 | $1,037 | $1,320 |
-| `chaos` (3x more incidents and accidents) | 98.7 % | 99.13 % | $16,349 | $4,048 | -$2,917 |
+| `baseline` | 98.8 % | 99.62 % | $16,330 | $2,248 | $2,534 |
+| `lean_staff` (2 pickers fewer per shift, fewer drivers) | 93.0 % | 99.76 % | $15,241 | $5,810 | $259 |
+| `extra_pickers` (+4 pickers per shift) | 100.0 % | 99.85 % | $18,418 | $628 | **$2,849** |
+| `chaos` (3x more incidents and accidents) | 98.9 % | 99.22 % | $16,339 | $3,559 | -$1,272 |
 | `summer_bbq` (June start, BBQ peak) | 98.6 % | 99.59 % | $16,376 | $2,677 | $9,004 |
 
-Cutting staff saves $1,064 a day in wages but costs $4,748 more in late-delivery fines (3 % of
-the order value, as in retailer OTIF programs) and expedites. Extra pickers buy perfect punctuality for
-$2,094 more a day in wages, which the service gain doesn't repay. This is the trade-off the
-labour-planning model will optimise.
+**Solid finding:** cutting staff saves $1,089 a day in wages but costs $3,562 more in late-delivery fines
+(3 % of the order value, as in retailer OTIF programs) and expedites, so lean staffing loses $2,275 a day.
+**Not settled by one run:** extra pickers cost $2,088 more in wages and save $1,620 in fines, a net
+staffing cost of $468 a day. Their profit still comes out $315 a day higher, because the cost lines
+that have nothing to do with staffing (revenue, spoilage, rejections, repairs, incidents) differ by about
+$783 a day between the two runs by chance. A multi-seed comparison is needed before choosing between them. The labour-planning
+model goes further: it varies the crew by day instead of choosing one fixed size.
 
 ## Tests
 
@@ -159,10 +176,10 @@ checks, $ assumptions, limits), and **[ml/RESULTS.md](ml/RESULTS.md)** holds the
 
 | Model | Result vs today's method | Value / day |
 |---|---|---|
-| Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week) | $2,881 (conservative) |
-| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 88 cases per picker-hour) plus the forecast: 301 picker-hours a day instead of 349 | $979 |
-| Late-order risk | Catches 53 % of late orders at 34 % precision (largest-orders rule: 4 %); top drivers are picker load and pickers present, the true mechanism | $180 |
-| Cold-room early warning | Warns 28 min before a breach vs 13 min for a fixed pre-alarm, with fewer alerts | not monetised |
+| Demand forecast | Store × SKU error 37 % vs 52 % (same weekday last week) | $2,356 (conservative) |
+| Labour planning | A capacity curve fitted from the data (service collapses above ≈ 89 cases per picker-hour) plus the forecast: 297 picker-hours a day instead of 350 | $1,129 |
+| Late-order risk | PR-AUC 0.17 vs 0.02 for the largest-orders rule; top drivers are picker load, departure hour and pickers present (the true mechanism). Unstable: late orders are rare (≈ 160 in the test period), so results swing between runs. | $45 |
+| Cold-room early warning | Warns 28 min before a breach vs 14 min for a fixed pre-alarm, with fewer alerts | not monetised |
 | Spoilage risk | **A simple rule wins** ("fewer than 3 days left at receipt" is 99 % precise). The fix is upstream: every spoiled pallet comes from an aged load, mostly from the poultry plant. | rule recommended |
 
 ## Record videos

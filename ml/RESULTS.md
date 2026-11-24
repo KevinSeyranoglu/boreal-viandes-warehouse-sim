@@ -4,15 +4,15 @@ Test period: the last third of each 180-day run (days the models never saw). Val
 
 | Model | Metric | Model | Baseline | Value / day |
 |---|---|---|---|---|
-| Demand forecast | WAPE, store × SKU × day | 37.0 % | 51.7 % (same weekday last week) | $2,881 |
-| | WAPE, SKU × day | 6.5 % | 8.8 % | |
-| Labour planning | picker-hours / day | 301 | 349 (fixed crew) | $979 |
-| | expected late orders / day | 0.51 | 0.30 | |
-| Spoilage risk | PR-AUC | 0.66 | 0.63 (days left < 3) | -$530 |
-| | precision / recall at the chosen threshold | 59 % / 53 % | 99 % / 32 % | **rule recommended** |
-| Late-order risk | PR-AUC | 0.42 | 0.02 (largest orders) | $180 |
-| | late orders caught / precision | 53 % / 34 % | 4 % / 3 % | |
-| Cold-room early warning | average warning lead | 28 min | 13 min (pre-alarm 1.06 °C below the limit) | not monetised |
-| | flagged readings / day, breaches warned | 8.8, 100 % | 11.4, 100 % | |
+| Demand forecast | WAPE, store × SKU × day | 37.1 % | 52.2 % (same weekday last week) | $2,356 |
+| | WAPE, SKU × day | 6.5 % | 8.6 % | |
+| Labour planning | picker-hours / day | 297 | 350 (fixed crew) | $1,129 |
+| | expected late orders / day | 0.55 | 0.34 | |
+| Spoilage risk | PR-AUC | 0.66 | 0.62 (days left < 3) | -$313 |
+| | precision / recall at the chosen threshold | 59 % / 53 % | 95 % / 31 % | **rule recommended** |
+| Late-order risk | PR-AUC | 0.17 | 0.02 (largest orders) | $45 |
+| | late orders caught / precision | 16 % / 15 % | 4 % / 4 % | |
+| Cold-room early warning | average warning lead | 28 min | 14 min (pre-alarm 1.06 °C below the limit) | not monetised |
+| | flagged readings / day, breaches warned | 9.0, 100 % | 10.9, 100 % | |
 
 Figures: `ml/figures/`.
