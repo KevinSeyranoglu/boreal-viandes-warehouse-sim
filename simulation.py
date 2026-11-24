@@ -48,7 +48,9 @@ ROLE_JOBS = {
 FORKLIFT_JOBS = {"putaway", "move_qa"}
 JOB_KINDS = ("unload", "taxi", "putaway", "move_qa", "inspect", "pick", "load")
 _MID_Y = (ROOM_Y0 + ROOM_Y1) // 2
-IDLE_POINTS = {"receiver": (_BX0 + 4, _MID_Y), "taxi": (_BX0 + 12, _BY0 + 13),
+SHARED = C.DOCK_LAYOUT == "shared"
+_DOCK_IN_X = _BX1 - 19 - C.SHARED_IN_COLS // 2 if SHARED else _BX0 + 4   # receivers wait by inbound staging
+IDLE_POINTS = {"receiver": (_DOCK_IN_X, _MID_Y),"taxi": (_DOCK_IN_X if SHARED else _BX0 + 12, _BY0 + 13),
                "forklift": ((CHARGING_AREA[0] + CHARGING_AREA[2]) // 2, _BY0 + 13),
                "picker": ((_RX0 + _BX1) // 2, ROOM_Y0 - 3), "loader": (_BX1 - 8, _MID_Y),
                "qa": (_RX0 + 9, _BY0 + 5)}
@@ -97,7 +99,11 @@ class Layout:
             self.doors.append(Door(id=len(self.doors), side="in", x=bx0, y=y))
         for y in C.SHIPPING_DOOR_Y:
             fill(bx1, y - 1, bx1, y + 1, DOCKDOOR)
-            self.doors.append(Door(id=len(self.doors), side="out", x=bx1, y=y))
+            self.doors.append(Door(id=len(self.doors), side="both" if SHARED else "out", x=bx1, y=y))
+        self.in_doors = [d for d in self.doors if d.side in ("in", "both")]
+        self.out_doors = [d for d in self.doors if d.side in ("out", "both")]   # route door = out_doors[i]
+        # door number as the dock staff say it: receiving and shipping count separately when split
+        self.door_num = [(self.in_doors if d.side == "in" else self.out_doors).index(d) + 1 for d in self.doors]
 
         self.areas = {}
         for name, (x0, x1) in NORTH_ROOMS.items():
@@ -139,10 +145,14 @@ class Layout:
                 self.spots.append(Spot(id=len(self.spots), kind="drop", x=x, y=ROOM_Y0 - 2, zone=key))
 
         for d in self.doors:
-            xs = range(bx0 + 6, bx0 + 16) if d.side == "in" else range(bx1 - 17, bx1 - 3)
-            for row in (d.y - 1, d.y + 1):
-                for x in xs:
-                    self.spots.append(Spot(id=len(self.spots), kind=d.side, x=x, y=row, door=d.id))
+            staging = {"in": [("in", range(bx0 + 6, bx0 + 16))], "out": [("out", range(bx1 - 17, bx1 - 3))],
+                       # shared door: outbound staging by the wall, inbound behind it (1-tile aisle between)
+                       "both": [("out", range(bx1 - 17, bx1 - 3)),
+                                ("in", range(bx1 - 18 - C.SHARED_IN_COLS, bx1 - 18))]}[d.side]
+            for kind, xs in staging:
+                for row in (d.y - 1, d.y + 1):
+                    for x in xs:
+                        self.spots.append(Spot(id=len(self.spots), kind=kind, x=x, y=row, door=d.id))
         qx0 = NORTH_ROOMS["qa"][0]
         for y in range(by0 + 3, by0 + 10, 2):
             for x in range(qx0 + 2, qx0 + 18, 2):
@@ -179,29 +189,34 @@ class Layout:
             for sl in zs:
                 self.slot_code[sl.id] = (f"{M.ROOM_CODE[key]}-{cols[sl.x]:02d}-{bays[sl.x][sl.y]:02d}-"
                                          f"{M.LEVEL_LETTER[sl.level]}")
-        n_in = len(C.RECEIVING_DOOR_Y)
         self.spot_code, seen = [""] * len(self.spots), {}
         for sp in self.spots:
             if sp.kind == "in":
-                area = f"STG-R{sp.door + 1:02d}"
+                area = f"STG-R{self.door_num[sp.door]:02d}"
             elif sp.kind == "out":
-                area = f"STG-S{sp.door - n_in + 1:02d}"
+                area = f"STG-S{self.door_num[sp.door]:02d}"
             elif sp.kind == "drop":
                 area = f"PD-{M.ROOM_CODE[sp.zone]}"
             else:
                 area = "QA"
             seen[area] = seen.get(area, 0) + 1
             self.spot_code[sp.id] = f"{area}-{seen[area]:02d}"
-        self.door_code = [f"RCV-D{d.id + 1:02d}" if d.side == "in" else f"SHP-D{d.id - n_in + 1:02d}"
-                          for d in self.doors]
+        prefix = {"in": "RCV", "out": "SHP", "both": "DCK"}
+        self.door_code = [f"{prefix[d.side]}-D{self.door_num[d.id]:02d}" for d in self.doors]
 
-        # truck routes (tile coordinates): west yard for inbound, east apron for outbound
+        # truck routes (tile coordinates): west yard for receiving doors, east apron for the east doors
         self.in_dock_x = bx0 - 8          # trailer centre when backed onto a receiving door
         self.in_lane_x = bx0 - 24         # north-south lane in front of the receiving doors
         self.in_turn_x = bx0 - 34
         self.out_dock_x = bx1 + 8
         self.out_lane_x = bx1 + 21
         self.out_turn_x = bx1 + 31
+
+    def approach(self, door):
+        """(lane x, turn x, dock x, outward step) for the apron in front of this door's wall."""
+        if door.x == C.BUILDING[0]:
+            return self.in_lane_x, self.in_turn_x, self.in_dock_x, -2
+        return self.out_lane_x, self.out_turn_x, self.out_dock_x, 2
 
     def zone_at(self, x: float, y: float):
         return self.zone_map.get(int(y) * self.w + int(x))
@@ -709,7 +724,7 @@ class Simulation:
             if late > 15:
                 self.stats["inbound_late"] += 1
             self.log("log_truck_in", "info", plant=tr.origin, truck=tid, late=int(late))
-        door = next((d for d in self.doors if d.side == "in" and d.truck is None), None)
+        door = self._free_inbound_door()
         if door is not None and self._receiving_capacity():
             from_park = tr.state == "parked"
             if from_park:
@@ -753,7 +768,7 @@ class Simulation:
         k = next((i for i, v in enumerate(self.parking) if v is None), None)
         if k is None:
             return                                   # yard full: it comes straight to the door later
-        door = self.doors[len(C.RECEIVING_DOOR_Y) + C.ROUTES[dep["route"]][1]]
+        door = self._route_door(dep["route"])
         tr = self._new_out_truck(dep, door)
         self.parking[k] = tr.id
         tr.park, tr.dest = k, "park"
@@ -764,7 +779,7 @@ class Simulation:
         dep = self.departures.get(key)
         if dep is None:
             return
-        door = self.doors[len(C.RECEIVING_DOOR_Y) + C.ROUTES[dep["route"]][1]]
+        door = self._route_door(dep["route"])
         tr = self.trucks.get(dep["truck"]) if dep["truck"] is not None else None
         if door.truck is not None or (tr is not None and tr.state == "approach"):
             self._schedule(self.t + 300, "out_arrive", key=key)
@@ -907,12 +922,24 @@ class Simulation:
     # ------------------------------------------------------------------ trucks
     def _wp_in_dock(self, door, from_park, tr):
         y = door.y + 0.5
-        L = self.layout
+        lane_x, turn_x, dock_x, _ = self.layout.approach(door)
         if from_park:                      # pull out of the yard, back onto the road, up to the door
-            return [[tr.x + 10, tr.y, False], [tr.x + 10, C.IN_LANE_Y, False], [L.in_lane_x, C.IN_LANE_Y, False],
-                    [L.in_lane_x, y, False], [L.in_turn_x, y, False], [L.in_dock_x, y, True]]
-        return [[L.in_lane_x, C.IN_LANE_Y, False], [L.in_lane_x, y, False], [L.in_turn_x, y, False],
-                [L.in_dock_x, y, True]]
+            return [[tr.x + 10, tr.y, False], [tr.x + 10, C.IN_LANE_Y, False], [lane_x, C.IN_LANE_Y, False],
+                    [lane_x, y, False], [turn_x, y, False], [dock_x, y, True]]
+        return [[lane_x, C.IN_LANE_Y, False], [lane_x, y, False], [turn_x, y, False], [dock_x, y, True]]
+
+    def _route_door(self, route):
+        return self.layout.out_doors[C.ROUTES[route][1]]
+
+    def _free_inbound_door(self):
+        """First free door that can receive. A shared door is kept free from INBOUND_DOOR_BUFFER_H before
+        its next outbound trailer arrives until that trailer has left."""
+        busy = set()
+        if SHARED:
+            soon = self.t + (C.INBOUND_DOOR_BUFFER_H + C.OUTBOUND_ARRIVE_BEFORE_H) * 3600
+            busy = {self._route_door(d["route"]).id for d in self.departures.values()
+                    if not d["done"] and d["dep"] <= soon}
+        return next((d for d in self.layout.in_doors if d.truck is None and d.id not in busy), None)
 
     def _update_trucks(self, dt):
         for tr in list(self.trucks.values()):
@@ -971,7 +998,7 @@ class Simulation:
         self.data.row("fact_inbound_trucks", truck_id=tr.id, po_number=self.po_no(tr.id), plant_code=tr.origin,
                       scheduled_ts=self.ts(tr.sched_t), gate_ts=self.ts(tr.arrive_t),
                       dock_ts=self.ts(tr.dock_t), unload_end_ts=self.ts(self.t),
-                      door=tr.door + 1, pallets_ordered=tr.pallets_ordered, pallets=n_total,
+                      door=self.layout.door_num[tr.door], pallets_ordered=tr.pallets_ordered, pallets=n_total,
                       pallets_rejected=len(rejected), aged_load=int(tr.aged_load),
                       late_min=round((tr.arrive_t - tr.sched_t) / 60, 1), reefer_failure=int(tr.reefer_fail))
         tr.pallets = rejected and [] or []
@@ -983,12 +1010,12 @@ class Simulation:
         y = door.y + 0.5
         tr.leave_t = self.t
         tr.state = "departing"
-        if tr.kind == "in":
-            tr.waypoints = [[self.layout.in_turn_x - 2, y, False], [self.layout.in_turn_x - 2, C.OUT_LANE_Y, False],
-                            [-30, C.OUT_LANE_Y, False]]
+        _, turn_x, _, out = self.layout.approach(door)
+        if tr.kind == "in":                 # back to the plants: west on the far lane
+            tr.waypoints = [[turn_x + out, y, False], [turn_x + out, C.OUT_LANE_Y, False], [-30, C.OUT_LANE_Y, False]]
             self._dispatch_waiting_inbound()
         else:
-            tr.waypoints = [[self.layout.out_turn_x + 2, y, False], [self.layout.out_turn_x + 2, C.IN_LANE_Y, False],
+            tr.waypoints = [[turn_x + out, y, False], [turn_x + out, C.IN_LANE_Y, False],
                             [C.MAP_W + 30, C.IN_LANE_Y, False]]
 
     def _receiving_capacity(self):
@@ -1003,7 +1030,7 @@ class Simulation:
         waiting = [tr for tr in self.trucks.values() if tr.kind == "in" and tr.state in ("parked", "queued")]
         waiting.sort(key=lambda tr: (tr.state != "parked", tr.arrive_t or 0))
         for tr in waiting:
-            if not any(d.side == "in" and d.truck is None for d in self.doors) or not self._receiving_capacity():
+            if self._free_inbound_door() is None or not self._receiving_capacity():
                 break
             self._ev_in_arrive(tr.id)
 
@@ -1067,7 +1094,7 @@ class Simulation:
         self.chart_shipped[int(self.hour()) % 24] += int(cases)
         self.data.row("fact_shipments", shipment_id=tr.id, bol_number=self.bol_no(tr.id), route_id=tr.origin,
                       truck_id=tr.id,
-                      door=tr.door - len(C.RECEIVING_DOOR_Y) + 1, scheduled_departure_ts=self.ts(tr.departure_t),
+                      door=self.layout.door_num[tr.door], scheduled_departure_ts=self.ts(tr.departure_t),
                       actual_departure_ts=self.ts(), orders=len(orders), pallets=n_pallets, cases=int(cases),
                       revenue=round(rev, 2), late_min=round(late, 1), load_sequence_violations=tr.seq_violations)
         self.fx_text(tr.x, tr.y - 2, "fx_shipped", "good", amount=rev)
@@ -2371,7 +2398,7 @@ class Simulation:
                     o.status = "picked"
                 self._maybe_close_order(o)
             return True
-        door = len(C.RECEIVING_DOOR_Y) + C.ROUTES[o.route][1] if o else None
+        door = self._route_door(o.route).id if o else None
         sp = self._free_spot("out", door)
         if sp is None:
             return False

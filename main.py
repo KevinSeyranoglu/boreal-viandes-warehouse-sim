@@ -21,16 +21,24 @@ import config as C
 import i18n
 
 # --record camera presets: tile the view centres on, zoom (None = whole site)
-_BX0, _BY0, _BX1, _BY1 = C.BUILDING
-CAMERAS = {
-    "site": None,
-    "receiving": (_BX0 - 2, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.8),         # receiving doors, staging, trailers
-    "shipping": (_BX1 + 2, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.8),          # shipping doors and outbound lanes
-    "freezer": (C.ROOM_X["freezer"] + 15, (C.ROOM_Y0 + C.ROOM_Y1) / 2, 0.9),
-    "picking": ((_BX0 + _BX1) / 2, C.ROOM_Y0 + 20, 0.65),
-    "yard": (_BX0 + 10, (C.RECEIVING_DOOR_Y[0] + C.PARKING[-1][1]) / 2, 0.5),   # receiving doors + trailer yard
-    "taxi": (C.ROOM_X["fresh"] - 6, C.ROOM_Y0 - 2, 1.4),                 # dock -> drop points
-}
+CAMERAS = ("site", "receiving", "shipping", "freezer", "picking", "yard", "taxi")
+
+
+def camera_presets():
+    """Computed after the scenario is applied: the shared-dock layout receives on the east wall."""
+    bx0, _, bx1, _ = C.BUILDING
+    mid_y = (C.ROOM_Y0 + C.ROOM_Y1) / 2
+    recv_x = bx0 - 2 if C.RECEIVING_DOOR_Y else bx1 - 10
+    first_in_y = (C.RECEIVING_DOOR_Y or C.SHIPPING_DOOR_Y)[0]
+    return {
+        "site": None,
+        "receiving": (recv_x, mid_y, 0.8),                              # receiving doors, staging, trailers
+        "shipping": (bx1 + 2, mid_y, 0.8),                              # shipping doors and outbound lanes
+        "freezer": (C.ROOM_X["freezer"] + 15, mid_y, 0.9),
+        "picking": ((bx0 + bx1) / 2, C.ROOM_Y0 + 20, 0.65),
+        "yard": (recv_x + 12, (first_in_y + C.PARKING[-1][1]) / 2, 0.5),  # receiving doors + trailer yard
+        "taxi": (C.ROOM_X["fresh"] - 6, C.ROOM_Y0 - 2, 1.4),            # dock -> drop points
+    }
 
 
 def parse_args(argv=None):
@@ -230,7 +238,7 @@ def run_record(args):
     sim.fx.clear()
     game = Game(sim, screen)
     game.speed_i = min(range(len(C.SPEEDS)), key=lambda i: abs(C.SPEEDS[i] - args.speed))
-    preset = CAMERAS[args.camera]
+    preset = camera_presets()[args.camera]
     if preset:
         game.renderer.cam.focus(*preset)
 

@@ -54,6 +54,15 @@ OTIF_SQL = """
 SELECT scenario, seed, 100 * AVG(CASE WHEN on_time = 1 AND fill_rate >= 0.999 THEN 1.0 ELSE 0 END) AS otif_pct
 FROM fact_orders GROUP BY ALL
 """
+# dock flow: how long a trailer waits in the yard (gate to door) and a pallet waits from receipt to its rack
+DOCK_SQL = """
+SELECT t.scenario, t.seed, AVG(date_diff('second', t.gate_ts, t.dock_ts)) / 60 AS yard_wait_min,
+       ANY_VALUE(p.dock_to_stock_min) AS dock_to_stock_min
+FROM fact_inbound_trucks t
+JOIN (SELECT scenario, seed, AVG(dock_dwell_min) AS dock_to_stock_min FROM fact_putaway GROUP BY ALL) p
+     USING (scenario, seed)
+GROUP BY ALL
+"""
 # label, format, higher is better
 KPIS = {
     "on_time_pct": ("On-time", "{:.1f} %", True),
@@ -63,6 +72,8 @@ KPIS = {
     "service_failure_per_day": ("Late fines and expedites / day", "${:,.0f}", False),
     "spoilage_per_day": ("Spoilage / day", "${:,.0f}", False),
     "profit_per_day": ("Profit / day", "${:,.0f}", True),
+    "yard_wait_min": ("Yard wait", "{:.1f} min", False),
+    "dock_to_stock_min": ("Dock-to-stock", "{:.1f} min", False),
 }
 # ML headline metrics: (model, key, label, format)
 ML = [
@@ -144,7 +155,9 @@ def cmd_ml(args):
 def run_kpis(db=DUCKDB):
     import duckdb
     con = duckdb.connect(db, read_only=True)
-    kpi = con.execute(KPI_SQL).df().merge(con.execute(OTIF_SQL).df(), on=["scenario", "seed"])
+    kpi = con.execute(KPI_SQL).df()
+    for sql in (OTIF_SQL, DOCK_SQL):
+        kpi = kpi.merge(con.execute(sql).df(), on=["scenario", "seed"])
     con.close()
     return kpi.sort_values(["scenario", "seed"]).reset_index(drop=True)
 

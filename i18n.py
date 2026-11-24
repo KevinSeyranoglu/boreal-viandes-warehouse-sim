@@ -47,6 +47,7 @@ TEXT = {
     "area_office": ("Bureau", "Office"),
     "area_receiving": ("Réception", "Receiving"),
     "area_shipping": ("Expédition", "Shipping"),
+    "area_dock_shared": ("Quai réception + expédition", "Receiving + shipping dock"),
     "area_yard": ("Cour à remorques", "Trailer yard"),
     "door_n": ("Porte {n}", "Door {n}"),
 

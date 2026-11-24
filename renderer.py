@@ -289,7 +289,9 @@ class Renderer:
                 self._label(screen, f"{i18n.value('zone', key)}  {z.temp:+.1f} °C", cx, y0 - 3.3, size,
                             col, bold=True)
         dock = sim.zones["dock"]
-        for key, cx in (("area_receiving", C.BUILDING[0] + 9), ("area_shipping", C.BUILDING[2] - 9)):
+        labels = ((("area_dock_shared", C.BUILDING[2] - 12),) if C.DOCK_LAYOUT == "shared" else
+                  (("area_receiving", C.BUILDING[0] + 9), ("area_shipping", C.BUILDING[2] - 9)))
+        for key, cx in labels:
             self._label(screen, f"{i18n.t(key)}  {dock.temp:+.1f} °C", cx, 6.5, max(11, size - 4), TEXT_DARK, bold=True)
         for key, area in (("area_charging", "charging"), ("area_break", "break"), ("area_office", "office")):
             x0, y0, x1, _ = L.areas[area]
@@ -298,11 +300,9 @@ class Renderer:
         self._label(screen, i18n.t("area_yard"), C.PARKING[0][0] + 60, C.PARKING[0][1] - 2.2,
                     max(11, size - 4), TEXT_LIGHT, bold=True)
         if cam.zoom >= 0.7:
-            n_in = len(C.RECEIVING_DOOR_Y)
             for d in L.doors:
-                n = d.id + 1 if d.side == "in" else d.id - n_in + 1
                 dx = d.x - 1.6 if d.side == "in" else d.x + 2.6
-                self._label(screen, str(n), dx, d.y + 0.5, max(10, size - 8), TEXT_LIGHT)
+                self._label(screen, str(L.door_num[d.id]), dx, d.y + 0.5, max(10, size - 8), TEXT_LIGHT)
 
     def _label(self, screen, text, tx, ty, size, color, bold=False):
         sx, sy = self.cam.to_screen(tx, ty)

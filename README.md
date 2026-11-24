@@ -20,13 +20,14 @@ scenario is compared with the baseline run of the same seed, with a 95 % interva
 | Should we cut pickers to save wages? | **No.** Lean staffing saves $1,163 a day in wages but pays $3,283 more in late fines and expedites: **−$2,624 a day** (−$4,174 to −$1,073), worse with all 5 seeds. |
 | Should we add pickers instead? | **Not as a fixed crew.** On-time reaches 100 %, but $2,015 a day of wages buys only $754 of fines avoided. Profit is higher with 1 seed of 5 (−$940 a day on average). A single run (seed 42) said the opposite. |
 | How many pickers do we need tomorrow? | A demand forecast (store × SKU error **36.8 % vs 51.9 %** for "same weekday last week") plus a capacity curve learned from the data gives a crew plan worth **$1,250 ± 89 a day** on held-out days. |
+| Can one dock wall both receive and ship? | **Yes.** 14 shared doors on one wall (instead of 6 + 14 on two walls, in a 6 % narrower building) change on-time, yard wait and dock-to-stock by less than the run-to-run noise. Receiving happens overnight and each door is only needed for loading in the 2 hours before its route leaves. |
 | Which pallets will spoil? | **A one-line rule beats the ML model** with every seed ("fewer than 3 days of shelf life at receipt"). Every spoiled pallet traces to an aged load, 98 % of them poultry: the fix is a supplier contract clause, not a model. |
 
 ## How it fits together
 
 ```mermaid
 flowchart TD
-    SIM["Simulation · pygame-ce<br/>5 scenarios × 5 seeds"] --> CSV["27 CSV tables per run<br/>star schema"]
+    SIM["Simulation · pygame-ce<br/>6 scenarios × 5 seeds"] --> CSV["27 CSV tables per run<br/>star schema"]
     CSV --> SQLITE[("SQLite")]
     CSV --> DUCK[("DuckDB + Parquet")]
     CSV --> AS400["AS/400 extract"]
@@ -160,6 +161,30 @@ they cost $2,015 more in wages and save only $754 in fines, a net cost of about 
 baseline crew is the better fixed crew. Profit itself swings by ±$1,178 a day between seeds, which is
 why one run could not decide. The labour-planning model goes further: it varies the crew by day
 instead of choosing one fixed size.
+
+### Dock layout: flow-through or U-shape?
+
+The baseline receives on the west wall (6 doors) and ships from the east wall (14 doors). The
+`shared_dock` scenario (`DOCK_LAYOUT = "shared"` in `config.py`) puts every door on one wall: 14 doors
+that both receive and ship, outbound staging by each door and inbound staging behind it, in a building
+6 % narrower. An inbound trailer only takes a door whose next outbound trailer is not due within
+2 hours (`INBOUND_DOOR_BUFFER_H`), so receiving never blocks a departure.
+
+| `shared_dock` vs baseline (5 seeds, paired) | Mean difference | 95 % interval |
+|---|---|---|
+| On-time | +0.2 pts | −0.2 to +0.7 pts |
+| Yard wait (gate to door) | +0.3 min | −1.3 to +1.9 min |
+| Dock-to-stock (receipt to rack) | +0.3 min | −0.7 to +1.3 min |
+| Profit / day | +$974 | −$536 to +$2,484 |
+
+**Finding:** six fewer doors and a smaller building cost nothing measurable in service or flow. The
+timing makes it work: inbound trailers arrive overnight and early morning, while each door is only
+needed for loading in the two hours before its route leaves, so one set of doors covers both jobs.
+The building and door savings are not in the profit figure.
+
+```bash
+python main.py --scenario shared_dock        # watch it (receiving and shipping on the east wall)
+```
 
 ## Tests
 

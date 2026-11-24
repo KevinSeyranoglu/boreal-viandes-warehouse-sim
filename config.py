@@ -43,26 +43,44 @@ TRUCK_CAPACITY = 30                # max pallets on a 53' reefer trailer
 TRUCK_CAPACITY_MIN = 28            # each inbound trailer is loaded to 28–30 pallets
 OUTBOUND_TRUCK_CAPACITY = 30
 
-# ---- derived geometry (tiles). Don't edit: change the numbers above.
-_BX0, _BY0 = 44, 4                                     # west wall, north wall
-_ROOM_W = {k: 5 * n + 5 for k, n in ROOMS.items()}     # wall + 2-wide pitch per pair + aisles
-ROOM_Y0 = _BY0 + 16                                    # north wall of the cold rooms
-ROOM_Y1 = ROOM_Y0 + 3 + RACK_SEGMENTS * RACK_RUN + (RACK_SEGMENTS - 1) * 2 + 3
-ROOM_X = {}
-_x = _BX0 + 18
-for _k, _w in _ROOM_W.items():
-    ROOM_X[_k] = _x
-    _x += _w + 2
-_BX1 = _x + 16                                         # east wall
-BUILDING = (_BX0, _BY0, _BX1, ROOM_Y1 + 4)             # x0, y0, x1, y1 (outer walls)
-RECEIVING_DOOR_Y = [ROOM_Y0 - 6 + i * ((BUILDING[3] - ROOM_Y0) // RECEIVING_DOORS) for i in range(RECEIVING_DOORS)]
-SHIPPING_DOOR_Y = [_BY0 + 8 + i * 6 for i in range(SHIPPING_DOORS)]
-ROAD_Y0, ROAD_Y1 = BUILDING[3] + 4, BUILDING[3] + 13
-IN_LANE_Y, OUT_LANE_Y = ROAD_Y0 + 2.5, ROAD_Y0 + 6.5
-PARKING = [(12 + 20 * i, ROAD_Y1 + 5 + 4 * r) for r in range(PARKING_ROWS) for i in range(PARKING_PER_ROW)]
-MAP_W = _BX1 + 41
-MAP_H = PARKING[-1][1] + 4
-assert SHIPPING_DOOR_Y[-1] + 2 < BUILDING[3] and RECEIVING_DOOR_Y[-1] + 2 < BUILDING[3], "too many doors"
+# Dock layout. "split": receiving doors on the west wall, shipping doors on the east wall (flow-through).
+# "shared": every door on the east wall both receives and ships (U-flow): no west dock, a narrower
+# building; each door keeps its outbound staging by the wall and gets SHARED_IN_COLS columns of
+# inbound staging behind it. An inbound trailer only takes a door whose next outbound trailer is not
+# due within INBOUND_DOOR_BUFFER_H hours.
+DOCK_LAYOUT = "split"
+SHARED_IN_COLS = 5                 # inbound staging columns per door row (2 rows a door)
+INBOUND_DOOR_BUFFER_H = 2.0        # hours kept free before a door's outbound trailer arrives
+
+
+# ---- derived geometry (tiles). Don't edit: change the numbers above (apply_scenario re-derives it).
+def _derive_geometry():
+    global ROOM_Y0, ROOM_Y1, ROOM_X, BUILDING, RECEIVING_DOOR_Y, SHIPPING_DOOR_Y, ROAD_Y0, ROAD_Y1
+    global IN_LANE_Y, OUT_LANE_Y, PARKING, MAP_W, MAP_H
+    shared = DOCK_LAYOUT == "shared"
+    bx0, by0 = 44, 4                                   # west wall, north wall
+    room_w = {k: 5 * n + 5 for k, n in ROOMS.items()}  # wall + 2-wide pitch per pair + aisles
+    ROOM_Y0 = by0 + 16                                 # north wall of the cold rooms
+    ROOM_Y1 = ROOM_Y0 + 3 + RACK_SEGMENTS * RACK_RUN + (RACK_SEGMENTS - 1) * 2 + 3
+    ROOM_X = {}
+    x = bx0 + (4 if shared else 18)                    # west dock (receiving) only in the split layout
+    for k, w in room_w.items():
+        ROOM_X[k] = x
+        x += w + 2
+    bx1 = x + 16 + (SHARED_IN_COLS + 1 if shared else 0)   # east wall
+    BUILDING = (bx0, by0, bx1, ROOM_Y1 + 4)            # x0, y0, x1, y1 (outer walls)
+    RECEIVING_DOOR_Y = [] if shared else [ROOM_Y0 - 6 + i * ((BUILDING[3] - ROOM_Y0) // RECEIVING_DOORS)
+                                          for i in range(RECEIVING_DOORS)]
+    SHIPPING_DOOR_Y = [by0 + 8 + i * 6 for i in range(SHIPPING_DOORS)]   # shared: these doors do both
+    ROAD_Y0, ROAD_Y1 = BUILDING[3] + 4, BUILDING[3] + 13
+    IN_LANE_Y, OUT_LANE_Y = ROAD_Y0 + 2.5, ROAD_Y0 + 6.5
+    PARKING = [(12 + 20 * i, ROAD_Y1 + 5 + 4 * r) for r in range(PARKING_ROWS) for i in range(PARKING_PER_ROW)]
+    MAP_W = bx1 + 41
+    MAP_H = PARKING[-1][1] + 4
+    assert all(y + 2 < BUILDING[3] for y in SHIPPING_DOOR_Y + RECEIVING_DOOR_Y), "too many doors"
+
+
+_derive_geometry()
 
 # ------------------------------------------------------------------ movement (tiles per sim-second)
 WALK_SPEED = 1.25
@@ -335,12 +353,15 @@ SCENARIOS = {
     "chaos": {"EVENT_RATES": {"late_truck": 10.0, "reefer_failure": 4.0, "freezer_door": 2.0,
                               "forklift_breakdown": 5.0, "rush_order": 5.0, "recall": 0.3},
               "INCIDENT_RATE_MULT": 3.0},
+    "shared_dock": {"DOCK_LAYOUT": "shared"},   # U-flow: 14 doors on one wall receive and ship
 }
 
 
 def apply_scenario(name):
-    """Overwrite module-level settings with a named scenario's values."""
+    """Overwrite module-level settings with a named scenario's values. Call it before importing
+    simulation (which reads the geometry at import)."""
     if name not in SCENARIOS:
         raise SystemExit(f"Unknown scenario '{name}'. Choices: {', '.join(SCENARIOS)}")
     for key, value in SCENARIOS[name].items():
         globals()[key] = value
+    _derive_geometry()

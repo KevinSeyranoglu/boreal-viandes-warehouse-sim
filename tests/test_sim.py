@@ -245,6 +245,33 @@ def test_headless_writes_csv_without_pygame(tmp_path):
         assert rows, table
 
 
+def test_shared_dock_receives_and_ships_on_the_same_doors(tmp_path):
+    """U-flow option: 14 doors on the east wall do both jobs. An inbound trailer never takes a door whose
+    outbound trailer leaves within the buffer + loading window, and service holds up."""
+    out = tmp_path / "shared"
+    subprocess.run([sys.executable, "main.py", "--headless", "--days", "6", "--scenario", "shared_dock",
+                    "--out", str(out)], cwd=ROOT, check=True, capture_output=True)
+
+    def rows(table):
+        with open(out / f"{table}.csv", encoding="utf-8") as fh:
+            return list(csv.DictReader(fh))
+    codes = {r["location"] for r in rows("dim_location")}
+    assert sum(c.startswith("DCK-D") for c in codes) == C.SHIPPING_DOORS
+    assert not any(c.startswith(("RCV-D", "SHP-D")) for c in codes)
+    ts = __import__("datetime").datetime.fromisoformat
+    window = (C.INBOUND_DOOR_BUFFER_H + C.OUTBOUND_ARRIVE_BEFORE_H) * 3600
+    departures = {}
+    for s in rows("fact_shipments"):
+        departures.setdefault(s["door"], []).append(ts(s["scheduled_departure_ts"]))
+    inbound = rows("fact_inbound_trucks")
+    assert len({r["door"] for r in inbound}) >= 4
+    for r in inbound:
+        docked = ts(r["dock_ts"])
+        assert not any(0 <= (d - docked).total_seconds() < window for d in departures.get(r["door"], [])), r
+    kpi = rows("fact_daily_kpi")
+    assert sum(float(k["on_time"]) for k in kpi[1:]) / len(kpi[1:]) > 0.9
+
+
 def test_every_sim_message_is_translated():
     src = "".join(open(os.path.join(ROOT, f), encoding="utf-8").read() for f in ("simulation.py", "events.py"))
     keys = set(re.findall(r'(?:log|fx_text)\([^"]*"((?:log|ev|fx)_[a-z_]+)"', src))

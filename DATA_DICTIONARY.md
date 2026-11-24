@@ -103,7 +103,7 @@ the database, every fact table and `dim_worker` start with two extra columns, `s
 ### dim_location: one row per WMS location (5,224)
 | Column | Type | Meaning |
 |---|---|---|
-| location | text | Location code. Rack slots are `ROOM-ROW-BAY-LEVEL`: `FR` fresh, `TR` processed (transformés), `CG` freezer (congélateur), level `A` = floor … `E` = top beam, e.g. `FR-03-17-C`. Floor spots: `STG-R01-05` receiving staging at door 1, `STG-S09-12` shipping staging at door 9, `PD-FR-03` drop point, `QA-07` QA cage. Doors: `RCV-D01`, `SHP-D14`. |
+| location | text | Location code. Rack slots are `ROOM-ROW-BAY-LEVEL`: `FR` fresh, `TR` processed (transformés), `CG` freezer (congélateur), level `A` = floor … `E` = top beam, e.g. `FR-03-17-C`. Floor spots: `STG-R01-05` receiving staging at door 1, `STG-S09-12` shipping staging at door 9, `PD-FR-03` drop point, `QA-07` QA cage. Doors: `RCV-D01`, `SHP-D14`; in the `shared_dock` scenario every door both receives and ships, `DCK-D01` … `DCK-D14` (its staging keeps `STG-R` for inbound and `STG-S` for outbound). |
 | loc_type | text | `RACK`, `STAGE_IN`, `STAGE_OUT`, `PD_POINT`, `QA_CAGE`, `DOOR` |
 | zone | text | Temperature zone |
 | room_row, bay, level, level_code | int / text | Rack coordinates (empty for floor spots) |
