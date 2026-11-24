@@ -13,6 +13,47 @@ from collections import defaultdict
 
 import config as C
 
+# Data contract: every fact table and its columns, in file order. Tables that got no rows
+# in a run are still written (header only) so downstream SQL and Power BI never break.
+# tests/test_analytics.py checks the simulation's row() calls against this.
+FACT_COLUMNS = {
+    "fact_daily_kpi": ["date", "revenue", "costs", "profit", "wages", "energy", "spoilage", "penalties",
+                       "rejected_cost", "expedite_cost", "repair_cost", "fixed_cost", "cases_shipped",
+                       "cases_picked", "orders", "on_time", "fill_rate", "accuracy", "cph", "compliance",
+                       "temp_alarms", "pallets_received", "pallets_rejected", "pallets_qa", "inbound_trucks",
+                       "inbound_late", "breakdowns", "expedites", "spoiled_cases", "sick_calls", "cash"],
+    "fact_energy_daily": ["date", "zone", "kwh", "cost", "door_passes"],
+    "fact_equipment": ["ts", "forklift_id", "event", "battery_pct"],
+    "fact_events": ["ts", "event_type", "detail"],
+    "fact_inbound_trucks": ["truck_id", "plant_code", "scheduled_ts", "gate_ts", "dock_ts", "unload_end_ts",
+                            "door", "pallets_ordered", "pallets", "pallets_rejected", "aged_load", "late_min",
+                            "reefer_failure"],
+    "fact_inventory_daily": ["date", "sku_code", "zone", "pallets", "cases_on_hand", "cases_reserved",
+                             "cases_expiring_2d", "avg_days_to_expiry"],
+    "fact_labor": ["date", "worker_id", "role", "shift", "start_ts", "end_ts", "hours", "tasks",
+                   "cases_picked", "break_taken", "skill"],
+    "fact_order_lines": ["order_id", "store_id", "sku_code", "cases_ordered", "cases_allocated",
+                         "cases_picked", "cases_shipped"],
+    "fact_orders": ["order_id", "store_id", "route_id", "created_ts", "cutoff_ts", "scheduled_departure_ts",
+                    "closed_ts", "lines", "cases_ordered", "cases_allocated", "cases_shipped", "fill_rate",
+                    "on_time", "late_min", "rush", "expedited", "mispicks_uncaught", "revenue", "penalty"],
+    "fact_pallet_receipts": ["pallet_id", "truck_id", "sku_code", "lot", "plant_code", "cases", "weight_kg",
+                             "pack_date", "best_before", "arrival_temp_c", "decision", "received_ts",
+                             "receiver_id"],
+    "fact_picks": ["pick_id", "order_id", "store_id", "job_id", "picker_id", "sku_code", "lot", "pallet_id",
+                   "slot_id", "zone", "level", "cases", "weight_kg", "start_ts", "end_ts", "travel_m",
+                   "mispick", "mispick_caught", "shift", "picker_skill", "days_to_expiry"],
+    "fact_putaway": ["pallet_id", "sku_code", "zone", "slot_id", "level", "operator_id", "forklift_id",
+                     "start_ts", "end_ts", "travel_m", "dock_dwell_min"],
+    "fact_shipment_lots": ["order_id", "store_id", "sku_code", "lot", "cases", "shipped_ts"],
+    "fact_shipments": ["shipment_id", "route_id", "truck_id", "door", "scheduled_departure_ts",
+                       "actual_departure_ts", "orders", "pallets", "cases", "revenue", "late_min",
+                       "load_sequence_violations"],
+    "fact_spoilage": ["ts", "pallet_id", "sku_code", "lot", "cases", "value", "reason"],
+    "fact_temperature": ["ts", "zone", "temp_c", "setpoint_c", "max_c", "alarm", "door_open_s"],
+    "fact_weather": ["date", "ambient_mean_c", "ambient_max_c"],
+}
+
 
 class NullLog:
     def write_dims(self, sim):
@@ -73,6 +114,10 @@ class CsvLog(NullLog):
 
     def close(self, sim=None):
         self.flush()
+        for table, cols in FACT_COLUMNS.items():      # header-only files for tables with no rows
+            if table not in self.headers:
+                with open(os.path.join(self.out_dir, table + ".csv"), "w", newline="", encoding="utf-8") as fh:
+                    csv.writer(fh).writerow(cols)
         if sim is not None:
             self._write_table("dim_worker", [
                 {"worker_id": w.id, "name": w.name, "role": w.role, "shift": w.shift, "skill": w.skill}

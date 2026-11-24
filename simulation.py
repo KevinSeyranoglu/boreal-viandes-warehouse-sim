@@ -385,7 +385,7 @@ class Simulation:
             self._schedule_departure(route, dep)
             if first:
                 dep0 = day * DAY + hour * 3600
-                if dep0 - self.t >= 3 * 3600:
+                if dep0 - self.t >= (C.CUTOFF_H + 1) * 3600:    # only departures we can still pick for
                     self._schedule_departure(route, dep0)
 
     def _schedule_departure(self, route, dep):
@@ -415,7 +415,7 @@ class Simulation:
             hist = self.demand_by_day[code]
             recent = [hist.get(k, 0) for k in range(day - 7, day)]
             fc = expected if day < 7 else 0.5 * expected + 0.5 * sum(recent) / 7
-            deficit = C.COVER_DAYS[sku.zone] * fc - position[code]
+            deficit = C.COVER_DAYS[sku.zone] * fc * max(0.3, self.rng.gauss(1, C.ORDER_NOISE_CV)) - position[code]
             need[code] = math.ceil(deficit / sku.cases_per_pallet) if deficit > 0 else 0
         for plant, info in C.PLANTS.items():
             codes = [c for c, s in self.skus.items() if s.plant == plant for _ in range(need[c])]
@@ -456,13 +456,20 @@ class Simulation:
         tid = self._nid("truck")
         late = min(max(self.rng.gauss(info["late_mean"], info["late_sd"]), C.LATENESS_CLIP_MIN[0]),
                    C.LATENESS_CLIP_MIN[1])
-        tr = Truck(id=tid, kind="in", origin=plant, sched_t=sched, planned_t=sched + late * 60)
+        tr = Truck(id=tid, kind="in", origin=plant, sched_t=sched, planned_t=sched + late * 60,
+                   pallets_ordered=len(codes), aged_load=self.rng.random() < info["aged_prob"])
         for code in codes:
+            if self.rng.random() < info["short_prob"]:
+                continue                        # short-shipped by the plant
             sku = self.skus[code]
             age = self.rng.uniform(*C.PACK_AGE_DAYS[sku.zone])
+            if tr.aged_load:
+                age += self.rng.uniform(*C.AGED_EXTRA_DAYS[sku.zone])
             p = self._make_pallet(code, plant, sched / DAY - age, sku.cases_per_pallet)
             p.loc, p.ref, p.truck_id = "truck", tid, tid
             tr.pallets.append(p.id)
+        if not tr.pallets:                      # everything short-shipped: no truck comes
+            return
         self.trucks[tid] = tr
         self._schedule(max(self.t, tr.planned_t), "in_arrive", tid=tid)
 
@@ -820,7 +827,8 @@ class Simulation:
         self.data.row("fact_inbound_trucks", truck_id=tr.id, plant_code=tr.origin,
                       scheduled_ts=self.ts(tr.sched_t), gate_ts=self.ts(tr.arrive_t),
                       dock_ts=self.ts(tr.dock_t), unload_end_ts=self.ts(self.t),
-                      door=tr.door, pallets=n_total, pallets_rejected=len(rejected),
+                      door=tr.door + 1, pallets_ordered=tr.pallets_ordered, pallets=n_total,
+                      pallets_rejected=len(rejected), aged_load=int(tr.aged_load),
                       late_min=round((tr.arrive_t - tr.sched_t) / 60, 1), reefer_failure=int(tr.reefer_fail))
         tr.pallets = rejected and [] or []
         self._truck_leave(tr)
@@ -904,7 +912,7 @@ class Simulation:
         dep["done"] = True
         self.chart_shipped[int(self.hour()) % 24] += int(cases)
         self.data.row("fact_shipments", shipment_id=tr.id, route_id=tr.origin, truck_id=tr.id,
-                      door=tr.door, scheduled_departure_ts=self.ts(tr.departure_t),
+                      door=tr.door - len(C.RECEIVING_DOOR_Y) + 1, scheduled_departure_ts=self.ts(tr.departure_t),
                       actual_departure_ts=self.ts(), orders=len(orders), pallets=n_pallets, cases=int(cases),
                       revenue=round(rev, 2), late_min=round(late, 1), load_sequence_violations=tr.seq_violations)
         self.fx_text(tr.x, tr.y - 2, "fx_shipped", "good", amount=rev)

@@ -130,6 +130,8 @@ class Truck:
     leave_t: float | None = None
     departure_t: float = 0.0   # outbound: scheduled departure
     reefer_fail: bool = False
+    pallets_ordered: int = 0   # inbound: what we ordered (the plant may short-ship)
+    aged_load: bool = False    # inbound: plant shipped older-than-usual product
     seq_violations: int = 0
     trail: list = field(default_factory=list)
 

@@ -165,21 +165,24 @@ CATEGORY_COLORS = {
 }
 
 # ------------------------------------------------------------------ supply plants (fictional)
+# short_prob: chance each ordered pallet is not shipped; aged_prob: chance a whole load is old stock
 PLANTS = {
     "PORC": {"fr": "Usine de porc – Beauce", "en": "Pork plant – Beauce",
-             "hours": [1, 7, 13, 19], "late_mean": 10, "late_sd": 35},
+             "hours": [1, 7, 13, 19], "late_mean": 10, "late_sd": 35, "short_prob": 0.03, "aged_prob": 0.06},
     "VOLA": {"fr": "Usine de volaille – Lanaudière", "en": "Poultry plant – Lanaudière",
-             "hours": [3, 9, 15, 21], "late_mean": 20, "late_sd": 45},
+             "hours": [3, 9, 15, 21], "late_mean": 20, "late_sd": 45, "short_prob": 0.07, "aged_prob": 0.09},
     "TRAN": {"fr": "Usine de transformation – Montérégie", "en": "Further-processing plant – Montérégie",
-             "hours": [5, 14], "late_mean": 5, "late_sd": 25},
+             "hours": [5, 14], "late_mean": 5, "late_sd": 25, "short_prob": 0.02, "aged_prob": 0.04},
     "SURG": {"fr": "Entrepôt de congélation – Mauricie", "en": "Cold storage – Mauricie",
-             "hours": [8, 17], "late_mean": 30, "late_sd": 60},
+             "hours": [8, 17], "late_mean": 30, "late_sd": 60, "short_prob": 0.05, "aged_prob": 0.05},
 }
 LATENESS_CLIP_MIN = (-60, 240)
 PACK_AGE_DAYS = {"fresh": (0, 2), "processed": (1, 5), "freezer": (5, 60)}
+AGED_EXTRA_DAYS = {"fresh": (3, 5), "processed": (10, 20), "freezer": (30, 90)}   # added on an aged load
+ORDER_NOISE_CV = 0.20              # buyer's order quantity error (forecast + judgement)
 
 # ------------------------------------------------------------------ inventory policy
-COVER_DAYS = {"fresh": 3.5, "processed": 7.0, "freezer": 12.0}
+COVER_DAYS = {"fresh": 2.0, "processed": 4.0, "freezer": 8.0}   # days of stock targeted on order
 MIN_INBOUND_PALLETS = 10           # a plant only sends another truck if each one carries at least this
 MIN_REMAINING_DAYS = {"fresh": 3, "processed": 7, "freezer": 30}
 

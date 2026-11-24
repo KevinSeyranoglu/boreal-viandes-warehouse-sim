@@ -65,18 +65,37 @@ data, and 60 simulated days take about 11 seconds.
   `fact_temperature`, `fact_energy_daily`, `fact_weather`, `fact_labor`, `fact_equipment`,
   `fact_events`, `fact_daily_kpi`
 
-Scenarios for what-if comparisons (60 simulated days, seed 42):
+Every table and column is documented in **[DATA_DICTIONARY.md](DATA_DICTIONARY.md)**,
+including the cause-and-effect built into the data.
 
-| Scenario | On-time | Expedited orders | Profit / day | Picker utilisation |
-|---|---|---|---|---|
-| `baseline` | 97.6 % | 5 | $4,655 | 44 % |
-| `lean_staff` (fewer pickers and drivers) | 94.1 % | 13 | $3,339 | 53 % |
-| `extra_pickers` | 100 % | 0 | $3,543 | 30 % |
-| `chaos` (5x more incidents) | 95.2 % | 8 | $2,768 | 48 % |
-| `summer_bbq` (June start, BBQ peak) | 96.3 % | 7 | $5,783 | 50 % |
+## SQL analytics
 
-Cutting staff saves wages but costs more in late-delivery penalties and expedites. Adding pickers
-buys perfect service at a higher cost. This is the trade-off the labour-planning model will optimise.
+```bash
+pip install -r requirements-analytics.txt
+python analytics/build_db.py                       # all runs in data/ -> data/warehouse.db (SQLite star schema)
+python analytics/run_sql.py                        # run every KPI query (scenario baseline)
+python analytics/run_sql.py 06 --scenario chaos    # one query, another scenario
+```
+
+`analytics/sql/` holds the nine queries a distribution-center manager asks for: daily OTIF,
+service by customer, cold-chain compliance, expiry risk, picker productivity, supplier scorecard,
+recall trace, scenario comparison and spoilage drivers. For example, the supplier scorecard and the
+spoilage-drivers query show that **every spoiled pallet came from an aged poultry load**, which
+arrived with about 3 days of shelf life left.
+
+Scenarios for what-if comparisons (180 simulated days, seed 42, from `analytics/sql/08_scenario_comparison.sql`):
+
+| Scenario | On-time | Fill rate | Wages / day | Late and expedite cost / day | Profit / day |
+|---|---|---|---|---|---|
+| `baseline` | 98.0 % | 99.44 % | $5,128 | $511 | **$2,500** |
+| `lean_staff` (fewer pickers and drivers) | 96.5 % | 99.37 % | $4,098 | $613 | $2,031 |
+| `extra_pickers` | 99.7 % | 99.29 % | $6,134 | $520 | $1,434 |
+| `chaos` (5x more incidents) | 98.2 % | 98.43 % | $5,141 | $1,242 | -$336 |
+| `summer_bbq` (June start, BBQ peak) | 97.9 % | 99.45 % | $5,120 | $519 | $4,179 |
+
+Cutting staff saves $1,000 a day in wages but loses more in late deliveries and bad days. Extra
+pickers buy near-perfect punctuality at a cost the service gain doesn't repay. This is the
+trade-off the labour-planning model will optimise.
 
 ## Tests
 
@@ -114,7 +133,8 @@ This renders offscreen and needs `ffmpeg`. The camera presets are `site`, `recei
 - [x] Simulation core, animated game, headless data export, video recording
 - [x] Tests: case conservation, reproducibility, no-deadlock regressions, save/load, staffing signal
 - [x] Economy and realism calibration: staffing and events move service levels (table below)
-- [ ] Data dictionary for every table and column
+- [x] Data dictionary, SQLite star schema and KPI SQL queries
+- [x] Realistic supply problems: short shipments, aged loads, buyer order error (spoilage ≈ 0.5 %, fill rate ≈ 99.4 %)
 - [ ] Power BI dashboards: operations, cold chain, inventory and expiry, labour, recall trace, scenario comparison
 - [ ] ML models, each against a naive baseline with the $ impact: demand forecast, labour planning, spoilage risk, late-shipment risk, temperature anomaly detection
 
