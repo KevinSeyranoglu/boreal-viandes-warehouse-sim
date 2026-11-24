@@ -1,19 +1,52 @@
 # Boréal Viandes – Cold-Chain Warehouse Simulation
 
-An animated simulation of a refrigerated meat **distribution center** in Québec. It also
-**generates realistic operational data** for dashboards and machine-learning models that answer
-the questions a distribution-center manager asks every day:
+[![tests](https://github.com/KevinSeyranoglu/boreal-viandes-warehouse-sim/actions/workflows/tests.yml/badge.svg)](https://github.com/KevinSeyranoglu/boreal-viandes-warehouse-sim/actions/workflows/tests.yml)
+![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
 
-- How many pickers do we need tomorrow?
-- Which pallets will expire before they ship?
-- Which orders are at risk of leaving late?
-- Is the freezer drifting toward an alarm?
-- What happens to cost and service if we cut or add staff?
+A simulated refrigerated meat **distribution center** in Québec. It produces the data a warehouse
+analyst works with: WMS scans, orders, picks, labour, yard, temperatures and incidents. On top of it
+is the full analytics stack: **SQL, DuckDB, Power BI, Streamlit, an AS/400 extract read by SAS, and
+five ML models**. Each model is measured in dollars against the method a distribution center uses today.
+
+![Demo: one shift of the simulation at 20x](docs/demo.gif)
+
+## Results at a glance
+
+Every number below holds across 5 random seeds ([docs/MULTISEED.md](docs/MULTISEED.md)): each
+scenario is compared with the baseline run of the same seed, with a 95 % interval.
+
+| Question a DC manager asks | Answer from the data |
+|---|---|
+| Should we cut pickers to save wages? | **No.** Lean staffing saves $1,163 a day in wages but pays $3,283 more in late fines and expedites: **−$2,624 a day** (−$4,174 to −$1,073), worse with all 5 seeds. |
+| Should we add pickers instead? | **Not as a fixed crew.** On-time reaches 100 %, but $2,015 a day of wages buys only $754 of fines avoided. Profit is higher with 1 seed of 5 (−$940 a day on average). A single run (seed 42) said the opposite. |
+| How many pickers do we need tomorrow? | A demand forecast (store × SKU error **36.8 % vs 51.9 %** for "same weekday last week") plus a capacity curve learned from the data gives a crew plan worth **$1,250 ± 89 a day** on held-out days. |
+| Which pallets will spoil? | **A one-line rule beats the ML model** with every seed ("fewer than 3 days of shelf life at receipt"). Every spoiled pallet traces to an aged load, 98 % of them poultry: the fix is a supplier contract clause, not a model. |
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    SIM["Simulation<br/>pygame-ce, headless"] --> CSV["27 CSV tables per run<br/>star schema"]
+    SIM -.->|"5 seeds × 5 scenarios"| CSV
+    CSV --> SQLITE[("SQLite")]
+    CSV --> DUCK[("DuckDB + Parquet")]
+    CSV --> AS400["AS/400 extract<br/>fixed width, CYYMMDD"]
+    AS400 --> SAS["SAS programs<br/>lot trace, dock-to-stock"]
+    SQLITE --> SQL["9 KPI queries"]
+    DUCK --> SQL
+    SQLITE --> PBI["Power BI export<br/>+ DAX guide"]
+    SQLITE --> ST["Streamlit dashboard<br/>FR / EN"]
+    SQLITE --> ML["5 ML models<br/>vs today's method, in $"]
+    DUCK --> MS["Multi-seed report<br/>mean ± sd, paired 95 % CI"]
+```
+
+**Skills shown:** SQL (window functions, `QUALIFY`, views), Python and pandas, DuckDB and Parquet,
+Power BI and DAX, SAS, scikit-learn (time-based splits, leakage checks, permutation importance), experiment
+design (paired seeds, confidence intervals), and software practice (a pytest suite run by CI on every push,
+reproducible seeded runs).
 
 The company, plants, stores and products are fictional. The data is simulated on purpose: the
 generating process is known, so every model can be checked against a controlled ground truth.
-
-![Demo: one shift of the simulation at 20x](docs/demo.gif)
 
 ## What is simulated
 
@@ -23,7 +56,7 @@ generating process is known, so every model can be checked against a controlled 
 | **Inbound** | 53' reefer trailers carrying 26–30 pallets from 4 plants, which arrive in an overnight and early-morning rush. Trailers wait in the yard until a door and a dock worker are free, then go through a 15-minute check-in. A probe temperature check decides accept, QA hold or reject. Reefer failures happen. |
 | **Put-away** | A taxi driver moves pallets from the dock to the drop points at the aisle ends, 2 at a time. A reach-truck driver then lifts each pallet into the high racks. |
 | **Storage** | Fresh (-1 to 2 °C), processed (0 to 4 °C) and freezer (-20 °C) rooms. Each pallet has a lot, a pack date and a best-before date. Product temperature lags room air (thermal mass), and excursions go to QA. |
-| **Orders** | 12 stores (grocery, club, restaurant) on 6 delivery routes with cutoffs. Demand follows weekday, seasonal (Christmas ham, summer BBQ, BBQ heat sensitivity) and random variation. |
+| **Orders** | 48 stores (grocery, club, restaurant) on 16 delivery routes with cutoffs. Demand follows weekday, seasonal (Christmas ham, summer BBQ, BBQ heat sensitivity) and random variation. |
 | **Picking & shipping** | FEFO picking onto mixed pallets with catch weights. Pallets are wrapped, staged, and loaded last stop first (at most 30 pallets per trailer). Empty outbound trailers are dropped in the yard hours ahead and pulled to their door for loading. |
 | **People & equipment** | Day, evening and night shifts. Receivers, taxi drivers, reach-truck drivers, pickers, loaders and QA, each with an individual skill. A fleet of 18 forklifts with batteries, chargers and breakdowns. |
 | **Events** | Late trucks, reefer failure, freezer door stuck open, forklift breakdown, sick calls, rush orders, lot recalls with traceability. |
@@ -135,8 +168,8 @@ instead of choosing one fixed size.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest tests/ -q
+pip install -r requirements-dev.txt    # game + analytics + pytest
+python -m pytest tests/ -q             # about 5 minutes; GitHub Actions runs them on every push
 ```
 
 ## Dashboards
